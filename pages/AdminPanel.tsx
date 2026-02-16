@@ -39,19 +39,15 @@ const AdminPanel: React.FC = () => {
   const handleDelete = async (id: string, table: string) => {
     if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
     
-    // USAMOS LA LLAVE MAESTRA TAMBIÉN PARA BORRAR (Por si RLS bloquea)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
     try {
         const { error } = await supabaseAdmin.from(table).delete().eq('id', id);
-        
-        // Si borramos un usuario de la tabla 'profiles', también intentamos borrarlo de Auth
         if (table === 'profiles' && !error) {
              await supabaseAdmin.auth.admin.deleteUser(id); 
         }
-
         if (error) throw error;
         await fetchData();
     } catch (err: any) {
@@ -72,8 +68,7 @@ const AdminPanel: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
       
-      {/* BANNER */}
-      <div className="bg-gradient-to-r from-[#b91c1c] to-[#0f172a] rounded-2xl p-8 text-white shadow-lg flex items-center gap-6 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#b91c1c] to-[#0f172a] rounded-2xl p-8 text-white shadow-lg flex items-center gap-6 relative overflow-hidden text-left">
         <div className="relative z-10">
            <h2 className="text-3xl font-bold tracking-tight mb-1">Configuración</h2>
            <p className="text-red-100 text-sm font-medium opacity-90">Gestión de indicadores y usuarios del sistema</p>
@@ -81,7 +76,6 @@ const AdminPanel: React.FC = () => {
         <Settings size={48} className="absolute right-10 top-1/2 -translate-y-1/2 text-white/10" />
       </div>
 
-      {/* TABS */}
       <div className="bg-white rounded-xl border border-slate-200 p-1 flex gap-1 w-fit mx-auto shadow-sm">
          <button onClick={() => setActiveTab('indicadores')} className={`px-6 py-2 rounded-lg text-xs font-bold uppercase transition-all flex items-center gap-2 ${activeTab === 'indicadores' ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:bg-slate-50'}`}>
             <Activity size={14} /> Indicadores
@@ -91,7 +85,6 @@ const AdminPanel: React.FC = () => {
          </button>
       </div>
 
-      {/* LISTA */}
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm min-h-[500px]">
         
         <div className="flex flex-col md:flex-row justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6 gap-4">
@@ -103,10 +96,7 @@ const AdminPanel: React.FC = () => {
                     {procesos.map(p => <option key={p.id}>{p.nombre_proceso}</option>)}
                 </select>
             </div>
-            <button 
-                onClick={() => handleOpenModal()} 
-                className="w-full md:w-auto bg-[#b91c1c] hover:bg-red-800 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 transition-all"
-            >
+            <button onClick={() => handleOpenModal()} className="w-full md:w-auto bg-[#b91c1c] hover:bg-red-800 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 transition-all">
                 <Plus size={14} /> {activeTab === 'indicadores' ? 'Nuevo Indicador' : 'Nuevo Usuario'}
             </button>
         </div>
@@ -135,7 +125,7 @@ const AdminPanel: React.FC = () => {
             ))}
           </div>
         ) : (
-          <div className="space-y-4 text-left">
+          <div className="grid grid-cols-1 gap-4">
             {filteredIndicadores.map((ind) => (
                 <div key={ind.id} className="border border-slate-100 rounded-xl p-5 hover:shadow-md transition-all flex flex-col md:flex-row justify-between items-start group gap-4">
                   <div className="space-y-2 flex-1 text-left">
@@ -146,7 +136,7 @@ const AdminPanel: React.FC = () => {
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${ind.estado === 'Activo' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>{ind.estado}</span>
                     </div>
                     <h4 className="text-sm font-bold text-slate-800">{ind.nombre_indicador}</h4>
-                    <p className="text-xs text-slate-500 line-clamp-1">{ind.descripcion}</p>
+                    <p className="text-xs text-slate-500 line-clamp-2 italic">{ind.descripcion || 'Sin descripción'}</p>
                   </div>
                   <div className="flex gap-1">
                     <button onClick={() => handleOpenModal(ind)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"><Edit2 size={16} /></button>
@@ -187,6 +177,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                 meta: item?.meta || 0,
                 unidad_medida: item?.unidad_medida || 'Porcentaje (%)',
                 frecuencia: item?.frecuencia || 'Mensual',
+                fuente_informacion: item?.fuente_informacion || '',
                 umbral_verde: item?.umbral_verde || 80,
                 umbral_amarillo: item?.umbral_amarillo || 70,
                 estado: item?.estado || 'Activo'
@@ -205,23 +196,12 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-
-        // --- CONEXIÓN ADMIN MAESTRA ---
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-
-        if (!serviceRoleKey) {
-            alert("ERROR CRÍTICO: No se encontró la SERVICE_ROLE_KEY.");
-            setLoading(false);
-            return;
-        }
-        
-        // Creamos cliente con permisos totales
         const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
         try {
             if (type === 'indicadores') {
-                // CORRECCIÓN CLAVE: Convertir string vacío a null para evitar errores de UUID en Supabase
                 const payload = { 
                     ...formData, 
                     meta: Number(formData.meta), 
@@ -230,7 +210,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                     proceso_id: formData.proceso_id === "" ? null : formData.proceso_id 
                 };
                 
-                // Usamos supabaseAdmin para INDICADORES también (Salva el error de RLS)
                 if (isEdit) {
                     const { error } = await supabaseAdmin.from('indicadores').update(payload).eq('id', item.id);
                     if (error) throw error;
@@ -240,59 +219,35 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                 }
             } else {
                 if (isEdit) {
-                    // 1. Actualizar Datos del Perfil
                     const { error: profileError } = await supabaseAdmin.from('profiles').update({
                         full_name: formData.full_name,
                         role: formData.role,
                         proceso_id: formData.proceso_id || null
                     }).eq('id', item.id);
-                    
                     if (profileError) throw profileError;
-
-                    // 2. CORRECCIÓN: Actualizar Contraseña si se escribió algo
                     if (formData.password && formData.password.trim() !== '') {
-                        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
-                            item.id, 
-                            { password: formData.password }
-                        );
-                        if (authError) throw authError;
-                        alert("Perfil y contraseña actualizados correctamente.");
+                        await supabaseAdmin.auth.admin.updateUserById(item.id, { password: formData.password });
                     } 
                 } else {
-                    // CREAR USUARIO NUEVO
                     const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(formData.email, {
                         data: { role: formData.role, full_name: formData.full_name },
                         redirectTo: window.location.origin
                     });
-
                     if (inviteError) throw inviteError;
-
                     if (data.user) {
-                        const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-                            data.user.id,
-                            { 
-                                password: formData.password || '123456', 
-                                email_confirm: true 
-                            }
-                        );
-                        if (updateError) throw updateError;
-
-                        const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
+                        await supabaseAdmin.auth.admin.updateUserById(data.user.id, { password: formData.password || '123456', email_confirm: true });
+                        await supabaseAdmin.from('profiles').upsert({
                             id: data.user.id,
                             email: formData.email,
                             full_name: formData.full_name,
                             role: formData.role,
                             proceso_id: formData.proceso_id || null
                         });
-                        
-                        if (profileError) throw profileError;
                     }
                 }
             }
-            onSave(); // Esto refresca la tabla
-            if (!isEdit && type === 'indicadores') alert("Indicador creado exitosamente.");
+            onSave();
         } catch (err: any) {
-            console.error(err);
             alert("Error: " + err.message);
         } finally {
             setLoading(false);
@@ -301,64 +256,90 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
 
     return (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[95vh] flex flex-col">
                 <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                     <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">{isEdit ? 'Editar' : 'Nuevo'} {type === 'indicadores' ? 'Indicador' : 'Usuario'}</h3>
                     <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"><X size={18} /></button>
                 </div>
                 
-                <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-6 text-left">
+                <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-5 text-left custom-scrollbar">
                     {type === 'indicadores' ? (
                         <>
-                            <div className="grid grid-cols-2 gap-6 text-left">
+                            <div className="grid grid-cols-2 gap-4">
                                 <Field label="Código" value={formData.codigo_indicador} onChange={(v:any) => setFormData({...formData, codigo_indicador: v})} required />
                                 <Select label="Unidad de Proceso" value={formData.proceso_id} onChange={(v:any) => setFormData({...formData, proceso_id: v})} options={procesos.map((p: any) => ({ label: p.nombre_proceso, value: p.id }))} />
                             </div>
+                            
                             <Field label="Nombre del Indicador" value={formData.nombre_indicador} onChange={(v:any) => setFormData({...formData, nombre_indicador: v})} required />
-                            <div className="grid grid-cols-2 gap-6 text-left">
-                                <Select label="Tipo" value={formData.tipo_indicador} onChange={(v:any) => setFormData({...formData, tipo_indicador: v})} options={['Eficacia', 'Eficiencia', 'Efectividad']} />
+                            
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Descripción del Indicador</label>
+                                <textarea 
+                                    value={formData.descripcion} 
+                                    onChange={e => setFormData({...formData, descripcion: e.target.value})}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-slate-200 min-h-[60px]"
+                                    placeholder="Explique qué mide este indicador..."
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Select label="Tipo" value={formData.tipo_indicador} onChange={(v:any) => setFormData({...formData, tipo_indicador: v})} options={['Eficacia', 'Eficiencia', 'Efectividad', 'Cumplimiento']} />
                                 <Select label="Estado" value={formData.estado} onChange={(v:any) => setFormData({...formData, estado: v})} options={['Activo', 'Inactivo']} />
                             </div>
-                            <Field label="Fórmula" value={formData.formula_calculo} onChange={(v:any) => setFormData({...formData, formula_calculo: v})} placeholder="(A / B) * 100" />
-                            <div className="grid grid-cols-3 gap-4 text-left">
-                                <Field label="Meta" type="number" value={formData.meta} onChange={(v:any) => setFormData({...formData, meta: v})} required />
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Field label="Fórmula de Cálculo" value={formData.formula_calculo} onChange={(v:any) => setFormData({...formData, formula_calculo: v})} placeholder="Ej: (A/B)*100" />
+                                <Field label="Fuente de Datos" value={formData.fuente_informacion} onChange={(v:any) => setFormData({...formData, fuente_informacion: v})} placeholder="Ej: CRM, Excel, ERP" />
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-4">
+                                <Field label="Meta Anual" type="number" value={formData.meta} onChange={(v:any) => setFormData({...formData, meta: v})} required />
                                 <Select label="Unidad" value={formData.unidad_medida} onChange={(v:any) => setFormData({...formData, unidad_medida: v})} options={['Porcentaje (%)', 'Número', 'Pesos ($)', 'Días']} />
-                                <Select label="Frecuencia" value={formData.frecuencia} onChange={(v:any) => setFormData({...formData, frecuencia: v})} options={['Mensual', 'Bimestral', 'Trimestral']} />
+                                <Select label="Frecuencia" value={formData.frecuencia} onChange={(v:any) => setFormData({...formData, frecuencia: v})} options={['Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Anual']} />
+                            </div>
+
+                            {/* SECCIÓN DE SEMAFORIZACIÓN */}
+                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
+                                <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+                                    <Activity size={16} className="text-slate-500" />
+                                    <h4 className="text-[11px] font-black text-slate-600 uppercase tracking-wider">Configuración de Semaforización (%)</h4>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-green-600 uppercase">🟢 Excelente (≥)</label>
+                                        <input type="number" value={formData.umbral_verde} onChange={e => setFormData({...formData, umbral_verde: e.target.value})} className="w-full p-2 text-sm font-bold border rounded-lg focus:ring-2 focus:ring-green-100" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-amber-600 uppercase">🟡 Aceptable (≥)</label>
+                                        <input type="number" value={formData.umbral_amarillo} onChange={e => setFormData({...formData, umbral_amarillo: e.target.value})} className="w-full p-2 text-sm font-bold border rounded-lg focus:ring-2 focus:ring-amber-100" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-red-600 uppercase">🔴 Crítico {'<'}</label>
+                                        <div className="w-full p-2 text-sm font-bold bg-slate-100 border rounded-lg text-slate-400">
+                                            {formData.umbral_amarillo || 0}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </>
                     ) : (
                         <>
-                            <div className="grid grid-cols-2 gap-6 text-left">
+                            <div className="grid grid-cols-2 gap-6">
                                 <Field label="Email de Usuario" value={formData.email} onChange={(v:any) => setFormData({...formData, email: v})} required disabled={isEdit} />
-                                
-                                {/* AQUI ESTÁ EL CAMBIO PARA LA CONTRASEÑA */}
-                                <Field 
-                                    label={isEdit ? "Nueva Contraseña (Opcional)" : "Contraseña Temporal"} 
-                                    type="password" 
-                                    value={formData.password} 
-                                    onChange={(v:any) => setFormData({...formData, password: v})} 
-                                    required={!isEdit} // Solo obligatoria al crear
-                                    placeholder={isEdit ? "Dejar en blanco para no cambiar" : "Ej: 123456"} 
-                                />
+                                <Field label={isEdit ? "Nueva Contraseña (Opcional)" : "Contraseña Temporal"} type="password" value={formData.password} onChange={(v:any) => setFormData({...formData, password: v})} required={!isEdit} placeholder={isEdit ? "Dejar en blanco" : "Mín. 6 caracteres"} />
                             </div>
                             <Field label="Nombre Completo" value={formData.full_name} onChange={(v:any) => setFormData({...formData, full_name: v})} required />
-                            <div className="grid grid-cols-2 gap-6 text-left">
+                            <div className="grid grid-cols-2 gap-6">
                                 <Select label="Rol" value={formData.role} onChange={(v:any) => setFormData({...formData, role: v})} options={['Administrador', 'Líder de Proceso']} />
                                 <Select label="Proceso Asignado" value={formData.proceso_id} onChange={(v:any) => setFormData({...formData, proceso_id: v})} options={procesos.map((p: any) => ({ label: p.nombre_proceso, value: p.id }))} />
                             </div>
-                            {!isEdit && (
-                                <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg flex items-start gap-3">
-                                    <AlertCircle size={16} className="text-amber-600 mt-0.5" />
-                                    <p className="text-[11px] text-amber-800 leading-tight">La cuenta se activará automáticamente al guardar.</p>
-                                </div>
-                            )}
                         </>
                     )}
 
-                    <div className="pt-4 flex justify-end gap-3">
+                    <div className="pt-4 flex justify-end gap-3 sticky bottom-0 bg-white pb-2">
                         <button type="button" onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors uppercase">Cancelar</button>
-                        <button type="submit" disabled={loading} className="px-6 py-2.5 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-black transition-colors uppercase flex items-center gap-2">
-                            {loading ? 'Procesando...' : <><Save size={16} /> Guardar Registro</>}
+                        <button type="submit" disabled={loading} className="px-8 py-2.5 rounded-xl text-xs font-bold bg-[#b91c1c] text-white hover:bg-red-800 transition-all uppercase flex items-center gap-2 shadow-lg shadow-red-900/20">
+                            {loading ? 'Guardando...' : <><Save size={16} /> Guardar Indicador</>}
                         </button>
                     </div>
                 </form>
@@ -367,7 +348,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
     );
 };
 
-// UI HELPERS (Sin cambios)
+// UI HELPERS
 const Field = ({ label, value, onChange, type="text", required=false, disabled=false, placeholder="" }: any) => (
     <div className="space-y-1.5 text-left">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label} {required && '*'}</label>
