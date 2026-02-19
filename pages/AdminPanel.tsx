@@ -229,24 +229,37 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                         await supabaseAdmin.auth.admin.updateUserById(item.id, { password: formData.password });
                     } 
                 } else {
-                    const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(formData.email, {
-                        data: { role: formData.role, full_name: formData.full_name },
-                        redirectTo: window.location.origin
+                    // --- CAMBIO AQUI: Creación de usuario activado automáticamente ---
+                    const { data, error: createError } = await supabaseAdmin.auth.admin.createUser({
+                        email: formData.email,
+                        password: formData.password || '123456',
+                        email_confirm: true, // Auto-verificar correo
+                        user_metadata: { role: formData.role, full_name: formData.full_name }
                     });
-                    if (inviteError) throw inviteError;
+                    
+                    if (createError) throw createError;
+                    
                     if (data.user) {
-                        await supabaseAdmin.auth.admin.updateUserById(data.user.id, { password: formData.password || '123456', email_confirm: true });
-                        await supabaseAdmin.from('profiles').upsert({
+                        const { error: profileError } = await supabaseAdmin.from('profiles').upsert({
                             id: data.user.id,
                             email: formData.email,
                             full_name: formData.full_name,
                             role: formData.role,
                             proceso_id: formData.proceso_id || null
                         });
+                        if (profileError) throw profileError;
                     }
                 }
             }
             onSave();
+            
+            // --- CAMBIO AQUI: Alertas de éxito ---
+            if (!isEdit) {
+                alert(type === 'indicadores' ? "✅ Indicador creado exitosamente." : "✅ Usuario creado y activado exitosamente.");
+            } else {
+                alert("✅ Registro actualizado correctamente.");
+            }
+            
         } catch (err: any) {
             alert("Error: " + err.message);
         } finally {
@@ -293,7 +306,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                             </div>
 
                             <div className="grid grid-cols-3 gap-4">
-                                <Field label="Meta Anual" type="number" value={formData.meta} onChange={(v:any) => setFormData({...formData, meta: v})} required />
+                                <Field label="Meta" type="number" value={formData.meta} onChange={(v:any) => setFormData({...formData, meta: v})} required />
                                 <Select label="Unidad" value={formData.unidad_medida} onChange={(v:any) => setFormData({...formData, unidad_medida: v})} options={['Porcentaje (%)', 'Número', 'Pesos ($)', 'Días']} />
                                 <Select label="Frecuencia" value={formData.frecuencia} onChange={(v:any) => setFormData({...formData, frecuencia: v})} options={['Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Anual']} />
                             </div>
@@ -339,7 +352,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                     <div className="pt-4 flex justify-end gap-3 sticky bottom-0 bg-white pb-2">
                         <button type="button" onClick={onClose} className="px-6 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors uppercase">Cancelar</button>
                         <button type="submit" disabled={loading} className="px-8 py-2.5 rounded-xl text-xs font-bold bg-[#b91c1c] text-white hover:bg-red-800 transition-all uppercase flex items-center gap-2 shadow-lg shadow-red-900/20">
-                            {loading ? 'Guardando...' : <><Save size={16} /> Guardar Indicador</>}
+                            {loading ? 'Guardando...' : <><Save size={16} /> Guardar Registro</>}
                         </button>
                     </div>
                 </form>
