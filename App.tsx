@@ -42,20 +42,13 @@ const App: React.FC = () => {
   // --- FUNCIÓN DE SALIDA BLINDADA ---
   const handleSignOut = async () => {
     try {
-      // 1. Intentar cerrar sesión en Supabase
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Error al salir:", error);
     } finally {
-      // 2. PASO CRITICO: Borrar la memoria del navegador
-      // Esto evita que Supabase encuentre el token viejo al recargar
       localStorage.clear(); 
       sessionStorage.clear();
-      
-      // 3. Limpiar estado local
       setUser(null);
-      
-      // 4. FORZAR recarga completa hacia el login
       window.location.replace('/');
     }
   };
@@ -63,23 +56,61 @@ const App: React.FC = () => {
   useEffect(() => {
     const sessionCheck = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
-          setUser(profile ? { ...profile, email: session.user.email } : null);
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        // --- NUEVO: Si hay error con la sesión, limpiamos todo ---
+        if (sessionError || !session?.user) {
+            console.log("Sesión inválida o inexistente. Limpiando...");
+            localStorage.clear();
+            sessionStorage.clear();
+            setUser(null);
+            return; // Salimos temprano
         }
-      } catch (e) { console.error("Error sesión:", e); } finally { setLoading(false); }
+
+        const { data: profile, error: profileError } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
+        
+        // --- NUEVO: Si no hay perfil, la sesión está rota ---
+        if (profileError || !profile) {
+             console.log("Perfil no encontrado. Forzando cierre...");
+             await supabase.auth.signOut();
+             localStorage.clear();
+             setUser(null);
+        } else {
+             setUser({ ...profile, email: session.user.email });
+        }
+
+      } catch (e) { 
+          console.error("Error sesión:", e); 
+          // --- NUEVO: En caso de error fatal, limpiamos por seguridad ---
+          localStorage.clear();
+          setUser(null);
+      } finally { 
+          setLoading(false); 
+      }
     };
+    
     sessionCheck();
     
     const { data: authListener } = supabase.auth.onAuthStateChange(async (e, session) => {
-      if (session?.user) {
-        const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
-        setUser(profile ? { ...profile, email: session.user.email } : null);
-      } else if (e === 'SIGNED_OUT') { 
+      // --- NUEVO: Manejo explícito de Token Expirado/Usuario Borrado ---
+      if (e === 'SIGNED_OUT' || e === 'USER_DELETED' || !session?.user) { 
         setUser(null); 
-        // Forzamos limpieza también aquí por seguridad
         localStorage.clear();
+        sessionStorage.clear();
+        // Solo redirigimos si no estamos ya en el login para evitar bucles
+        if (window.location.hash !== '#/login') {
+             window.location.hash = '#/login';
+        }
+      } else if (session?.user) {
+        const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
+        // --- NUEVO: Si el perfil fue borrado pero la sesión sigue activa ---
+        if (!profile) {
+             await supabase.auth.signOut();
+             setUser(null);
+             localStorage.clear();
+        } else {
+             setUser({ ...profile, email: session.user.email });
+        }
       }
       setLoading(false);
     });
