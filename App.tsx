@@ -39,82 +39,72 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // --- FUNCIÓN DE SALIDA BLINDADA ---
+  // --- FUNCIÓN DE SALIDA LIMPIA ---
   const handleSignOut = async () => {
     try {
+      setLoading(true);
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Error al salir:", error);
     } finally {
-      localStorage.clear(); 
-      sessionStorage.clear();
       setUser(null);
-      window.location.replace('/');
+      setLoading(false);
     }
   };
 
   useEffect(() => {
+    let isMounted = true;
+    
+    // --- TEMPORIZADOR DE SEGURIDAD (ANTIBLOQUEO) ---
+    // Si después de 3 segundos la app sigue "Cargando...", fuerza el desbloqueo.
+    const safetyTimeout = setTimeout(() => {
+        if (isMounted) setLoading(false);
+    }, 3000);
+
     const sessionCheck = async () => {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        // --- NUEVO: Si hay error con la sesión, limpiamos todo ---
-        if (sessionError || !session?.user) {
-            console.log("Sesión inválida o inexistente. Limpiando...");
-            localStorage.clear();
-            sessionStorage.clear();
-            setUser(null);
-            return; // Salimos temprano
+        if (error) {
+            console.error("Error de sesión detectado, cerrando...");
+            await supabase.auth.signOut(); // Limpieza nativa de Supabase
+            if (isMounted) setUser(null);
+            return;
         }
 
-        const { data: profile, error: profileError } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
-        
-        // --- NUEVO: Si no hay perfil, la sesión está rota ---
-        if (profileError || !profile) {
-             console.log("Perfil no encontrado. Forzando cierre...");
-             await supabase.auth.signOut();
-             localStorage.clear();
-             setUser(null);
+        if (session?.user) {
+          const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
+          if (isMounted) setUser(profile ? { ...profile, email: session.user.email } : null);
         } else {
-             setUser({ ...profile, email: session.user.email });
+          if (isMounted) setUser(null);
         }
-
       } catch (e) { 
-          console.error("Error sesión:", e); 
-          // --- NUEVO: En caso de error fatal, limpiamos por seguridad ---
-          localStorage.clear();
-          setUser(null);
+          console.error("Error validando perfil:", e); 
+          if (isMounted) setUser(null);
       } finally { 
-          setLoading(false); 
+          if (isMounted) setLoading(false); 
+          clearTimeout(safetyTimeout); // Cancelamos el temporizador si todo salió bien
       }
     };
     
     sessionCheck();
     
+    // Escuchador de cambios en tiempo real
     const { data: authListener } = supabase.auth.onAuthStateChange(async (e, session) => {
-      // --- NUEVO: Manejo explícito de Token Expirado/Usuario Borrado ---
-      if (e === 'SIGNED_OUT' || e === 'USER_DELETED' || !session?.user) { 
-        setUser(null); 
-        localStorage.clear();
-        sessionStorage.clear();
-        // Solo redirigimos si no estamos ya en el login para evitar bucles
-        if (window.location.hash !== '#/login') {
-             window.location.hash = '#/login';
-        }
+      if (e === 'SIGNED_OUT' || e === 'USER_DELETED') { 
+        if (isMounted) setUser(null); 
       } else if (session?.user) {
         const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
-        // --- NUEVO: Si el perfil fue borrado pero la sesión sigue activa ---
-        if (!profile) {
-             await supabase.auth.signOut();
-             setUser(null);
-             localStorage.clear();
-        } else {
-             setUser({ ...profile, email: session.user.email });
-        }
+        if (isMounted) setUser(profile ? { ...profile, email: session.user.email } : null);
       }
-      setLoading(false);
+      if (isMounted) setLoading(false);
     });
-    return () => authListener.subscription.unsubscribe();
+    
+    return () => {
+        isMounted = false;
+        authListener.subscription.unsubscribe();
+        clearTimeout(safetyTimeout);
+    };
   }, []);
 
   if (loading) return (
