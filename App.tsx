@@ -19,10 +19,10 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ 
-  user: null, 
-  loading: true, 
-  signOut: async () => {}
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  signOut: async () => { }
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -30,8 +30,8 @@ export const useAuth = () => useContext(AuthContext);
 // Componente de Carga
 const LoadingScreen = () => (
   <div className="h-full w-full min-h-[500px] flex flex-col items-center justify-center text-slate-400 gap-4">
-      <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-      <span className="text-xs font-bold uppercase tracking-widest">Cargando...</span>
+    <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+    <span className="text-xs font-bold uppercase tracking-widest">Cargando...</span>
   </div>
 );
 
@@ -54,70 +54,86 @@ const App: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
-    
+
     // --- TEMPORIZADOR DE SEGURIDAD (ANTIBLOQUEO) ---
-    // Si después de 3 segundos la app sigue "Cargando...", fuerza el desbloqueo.
+    // Aumentado a 20s para soportar conexiones muy lentas o arranques en frío de la DB.
     const safetyTimeout = setTimeout(() => {
-        if (isMounted) setLoading(false);
-    }, 3000);
+      if (isMounted) {
+        console.warn('⚠️ No se recibió respuesta de Supabase a tiempo. Forzando fin de carga.');
+        setLoading(false);
+      }
+    }, 20000);
 
     const sessionCheck = async () => {
+      console.log("🔍 Iniciando verificación de sesión...");
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-            console.error("Error de sesión detectado, cerrando...");
-            await supabase.auth.signOut(); // Limpieza nativa de Supabase
-            if (isMounted) setUser(null);
-            return;
-        }
+        // Envolviendo getSession en una promesa con timeout corto (5s) para el arranque inicial
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout Supabase")), 5000));
+
+        const { data: { session }, error: sessionError } = await Promise.race([sessionPromise, timeoutPromise]) as any;
+
+        if (sessionError) throw sessionError;
 
         if (session?.user) {
-          const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
-          if (isMounted) setUser(profile ? { ...profile, email: session.user.email } : null);
+          console.log("👤 Sesión detectada:", session.user.email);
+          // Usamos getUser para validar CONTRA EL SERVIDOR que el token sea vigente
+          const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser();
+
+          if (userError || !verifiedUser) {
+            console.warn("⚠️ Token almacenado no es válido en el servidor. Limpiando...");
+            await supabase.auth.signOut();
+            if (isMounted) setUser(null);
+          } else {
+            const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', verifiedUser.id).maybeSingle();
+            if (isMounted) setUser(profile ? { ...profile, email: verifiedUser.email } : null);
+          }
         } else {
+          console.log("ℹ️ No hay sesión activa.");
           if (isMounted) setUser(null);
         }
-      } catch (e) { 
-          console.error("Error validando perfil:", e); 
-          if (isMounted) setUser(null);
-      } finally { 
-          if (isMounted) setLoading(false); 
-          clearTimeout(safetyTimeout); // Cancelamos el temporizador si todo salió bien
+      } catch (e: any) {
+        console.error("❌ Fallo crítico en verificación de sesión:", e.message);
+        // Si hay error (como timeout o sesión corrupta), forzamos salida para que el usuario pueda loguearse de nuevo
+        if (isMounted) setUser(null);
+      } finally {
+        console.log("✅ Verificación terminada.");
+        if (isMounted) setLoading(false);
+        clearTimeout(safetyTimeout);
       }
     };
-    
+
     sessionCheck();
-    
+
     // Escuchador de cambios en tiempo real
     const { data: authListener } = supabase.auth.onAuthStateChange(async (e, session) => {
-      if (e === 'SIGNED_OUT' || e === 'USER_DELETED') { 
-        if (isMounted) setUser(null); 
+      if (e === 'SIGNED_OUT') {
+        if (isMounted) setUser(null);
       } else if (session?.user) {
         const { data: profile } = await supabase.from('profiles').select('*, procesos(*)').eq('id', session.user.id).maybeSingle();
         if (isMounted) setUser(profile ? { ...profile, email: session.user.email } : null);
       }
       if (isMounted) setLoading(false);
     });
-    
+
     return () => {
-        isMounted = false;
-        authListener.subscription.unsubscribe();
-        clearTimeout(safetyTimeout);
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+      clearTimeout(safetyTimeout);
     };
   }, []);
 
   if (loading) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white gap-4">
-        <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-xs font-bold uppercase tracking-widest">Cargando Sur Company...</span>
+      <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+      <span className="text-xs font-bold uppercase tracking-widest">Cargando Sur Company...</span>
     </div>
   );
 
   return (
     <AuthContext.Provider value={{ user, loading, signOut: handleSignOut }}>
       <Router>
-        <Suspense fallback={<div className="h-screen w-screen bg-slate-900 flex items-center justify-center"><LoadingScreen/></div>}>
+        <Suspense fallback={<div className="h-screen w-screen bg-slate-900 flex items-center justify-center"><LoadingScreen /></div>}>
           <Routes>
             <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
             <Route path="/*" element={<ProtectedRoute user={user} />}>
@@ -126,7 +142,10 @@ const App: React.FC = () => {
               <Route path="registro" element={<RegistroIndicadores />} />
               <Route path="procesos" element={<ProcesosView />} />
               <Route path="historico" element={<Historico />} />
-              <Route path="admin" element={<AdminPanel />} />
+              {/* FIX SEGURIDAD: Ruta admin ahora protegida por rol (AdminRoute) */}
+              <Route path="admin" element={<AdminRoute user={user} />}>
+                <Route index element={<AdminPanel />} />
+              </Route>
             </Route>
           </Routes>
         </Suspense>
@@ -135,11 +154,26 @@ const App: React.FC = () => {
   );
 };
 
+// FIX SEGURIDAD: Componente que restringe el acceso solo a Administradores.
+// Cualquier usuario autenticado que no sea Admin es redirigido al inicio.
+const AdminRoute: React.FC<{ user: UserProfile | null }> = ({ user }) => {
+  if (user?.role !== 'Administrador') return <Navigate to="/" replace />;
+  return <Outlet />;
+};
+
 // Componente Protegido
 const ProtectedRoute: React.FC<{ user: UserProfile | null }> = ({ user }) => {
   const location = useLocation();
-  const { signOut } = useAuth();
-  
+  const { signOut, loading } = useAuth();
+
+  // FIX: Si todavía está cargando la sesión (ej. al dar F5), mostramos la pantalla de carga 
+  // en lugar de redirigir inmediatamente a /login.
+  if (loading) return (
+    <div className="h-screen w-screen flex items-center justify-center bg-[#f3f4f6]">
+      <LoadingScreen />
+    </div>
+  );
+
   if (!user) return <Navigate to="/login" replace />;
   const isAdmin = user.role === 'Administrador';
 
@@ -147,20 +181,20 @@ const ProtectedRoute: React.FC<{ user: UserProfile | null }> = ({ user }) => {
     <div className="flex flex-col min-h-screen bg-[#f3f4f6] font-sans">
       <header className="bg-[#1e293b] text-white h-16 flex items-center justify-between px-8 shadow-md z-50">
         <div className="flex items-center gap-3">
-           <div className="w-8 h-8 bg-[#b91c1c] rounded-lg flex items-center justify-center font-black italic shadow-red-900/50 shadow-lg text-[10px]">SUR</div>
-           <div>
-              <h1 className="text-sm font-black tracking-tight leading-none uppercase">INDICADORES DE PROCESO</h1>
-              <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase">SUR COMPANY SAS</p>
-           </div>
+          <div className="w-8 h-8 bg-[#b91c1c] rounded-lg flex items-center justify-center font-black italic shadow-red-900/50 shadow-lg text-[10px]">SUR</div>
+          <div>
+            <h1 className="text-sm font-black tracking-tight leading-none uppercase">INDICADORES DE PROCESO</h1>
+            <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase">SUR COMPANY SAS</p>
+          </div>
         </div>
         <div className="flex items-center gap-6">
           <div className="text-right hidden sm:block">
             <p className="text-xs font-bold text-white">{user.full_name || 'Usuario'}</p>
             <p className="text-[10px] text-slate-400 uppercase tracking-wider">{user.role}</p>
           </div>
-          
-          <button 
-            onClick={() => signOut()} 
+
+          <button
+            onClick={() => signOut()}
             className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold border border-slate-700 transition-all cursor-pointer active:scale-95"
           >
             <LogOut size={14} /> Salir
@@ -170,22 +204,22 @@ const ProtectedRoute: React.FC<{ user: UserProfile | null }> = ({ user }) => {
 
       <div className="bg-white border-b border-slate-200 px-8 py-2 shadow-sm sticky top-0 z-40">
         <nav className="flex justify-start gap-2 overflow-x-auto">
-          <NavItem to="/" label={isAdmin ? 'Vista General' : 'Mi Vista'} icon={<LayoutGrid size={16}/>} active={location.pathname === '/'} />
+          <NavItem to="/" label={isAdmin ? 'Vista General' : 'Mi Vista'} icon={<LayoutGrid size={16} />} active={location.pathname === '/'} />
           {isAdmin && (
             <>
-              <NavItem to="/matriz" label="Matriz de Indicadores" icon={<ClipboardList size={16}/>} active={location.pathname === '/matriz'} />
-              <NavItem to="/procesos" label="Procesos" icon={<Building2 size={16}/>} active={location.pathname === '/procesos'} />
+              <NavItem to="/matriz" label="Matriz de Indicadores" icon={<ClipboardList size={16} />} active={location.pathname === '/matriz'} />
+              <NavItem to="/procesos" label="Procesos" icon={<Building2 size={16} />} active={location.pathname === '/procesos'} />
             </>
           )}
-          {!isAdmin && <NavItem to="/registro" label="Registrar Indicador" icon={<FilePlus2 size={16}/>} active={location.pathname === '/registro'} />}
-          <NavItem to="/historico" label="Histórico" icon={<History size={16}/>} active={location.pathname === '/historico'} />
-          {isAdmin && <NavItem to="/admin" label="Configuración" icon={<Settings size={16}/>} active={location.pathname === '/admin'} />}
+          {!isAdmin && <NavItem to="/registro" label="Registrar Indicador" icon={<FilePlus2 size={16} />} active={location.pathname === '/registro'} />}
+          <NavItem to="/historico" label="Histórico" icon={<History size={16} />} active={location.pathname === '/historico'} />
+          {isAdmin && <NavItem to="/admin" label="Configuración" icon={<Settings size={16} />} active={location.pathname === '/admin'} />}
         </nav>
       </div>
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-8 animate-in fade-in zoom-in-95 duration-300">
         <Suspense fallback={<LoadingScreen />}>
-            <Outlet />
+          <Outlet />
         </Suspense>
       </main>
     </div>

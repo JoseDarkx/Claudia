@@ -1,6 +1,6 @@
 
 export type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo';
-export type TipoIndicador = 'Eficiencia' | 'Eficacia' | 'Calidad' | 'Cumplimiento';
+export type TipoIndicador = 'Eficiencia' | 'Eficacia' | 'Efectividad' | 'Cumplimiento';
 export type EstadoIndicador = 'Activo' | 'Inactivo';
 export type EstadoRegistro = 'Borrador' | 'Enviado' | 'Revisado';
 export type Semaforo = 'Verde' | 'Amarillo' | 'Rojo';
@@ -30,6 +30,7 @@ export interface Indicador {
   estado: EstadoIndicador;
   umbral_verde: number;
   umbral_amarillo: number;
+  umbral_rojo: number;
   created_at: string;
   procesos?: Proceso;
 }

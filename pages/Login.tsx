@@ -35,7 +35,7 @@ const Login: React.FC = () => {
 
       <div className="max-w-md w-full animate-in fade-in zoom-in duration-700 relative z-10">
         <div className="bg-white rounded-[2.5rem] shadow-2xl p-10 relative overflow-hidden border-4 border-slate-900/5">
-          
+
           {/* Barra superior decorativa */}
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-red-700 via-red-600 to-slate-900"></div>
 
@@ -47,7 +47,7 @@ const Login: React.FC = () => {
             <h1 className="text-2xl font-black text-slate-900 tracking-tighter mb-2 uppercase">SUR COMPANY SAS</h1>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.4em]">Plataforma de Indicadores</p>
           </div>
-          
+
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-4">
               <div className="space-y-1">
@@ -61,19 +61,19 @@ const Login: React.FC = () => {
                   placeholder="usuario@surcompany.com"
                 />
               </div>
-              
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Contraseña</label>
                 <div className="relative">
-                    <input
+                  <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-xl focus:border-slate-900 outline-none transition-all text-sm font-bold text-slate-800"
                     placeholder="••••••••"
-                    />
-                    <Lock size={16} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" />
+                  />
+                  <Lock size={16} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" />
                 </div>
               </div>
             </div>
@@ -93,7 +93,16 @@ const Login: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-10 pt-6 border-t border-slate-50 text-center">
+          <div className="mt-10 pt-6 border-t border-slate-50 text-center space-y-4">
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.reload();
+              }}
+              className="text-[9px] text-slate-400 hover:text-red-500 font-bold uppercase tracking-widest transition-colors"
+            >
+              ¿Problemas para entrar? Reparar Acceso
+            </button>
             <p className="text-[8px] text-slate-300 font-bold uppercase tracking-widest">© 2026 SUR COMPANY SAS - SGI</p>
           </div>
         </div>

@@ -17,9 +17,7 @@ const ProcesosView: React.FC = () => {
       try {
         const [pRes, iRes, rRes] = await Promise.all([
           supabase.from('procesos').select('*'),
-          // Solo traemos info básica de indicadores
           supabase.from('indicadores').select('id, nombre_indicador, codigo_indicador, proceso_id, meta'),
-          // OPTIMIZACIÓN: Solo columnas necesarias
           supabase.from('registro_mensual_indicadores')
             .select('id, proceso_id, indicador_id, porcentaje_cumplimiento, resultado_mensual, cumple_meta, periodo')
             .order('periodo', { ascending: false })
@@ -50,12 +48,24 @@ const ProcesosView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {group.map(p => {
             const regs = registros.filter(r => r.proceso_id === p.id);
-            const cumplimiento = regs.length > 0 ? Math.round(regs.reduce((a, c) => a + c.porcentaje_cumplimiento, 0) / regs.length) : 0;
+            const hasData = regs.length > 0;
+            const cumplimiento = hasData ? Math.round(regs.reduce((a, c) => a + c.porcentaje_cumplimiento, 0) / regs.length) : 0;
             const inds = indicadores.filter(i => i.proceso_id === p.id).length;
+
+            // --- CORRECCIÓN: El color de la tarjeta obedece a 'cumple_meta', no al porcentaje de esfuerzo ---
+            const metCount = regs.filter(r => r.cumple_meta).length;
+            const proporcionMetas = hasData ? metCount / regs.length : 0;
+
+            let colorClass = 'bg-slate-300'; // Gris (Sin Datos)
+            if (hasData) {
+                if (proporcionMetas === 1) colorClass = 'bg-green-500'; // Verde (Todas las metas)
+                else if (proporcionMetas >= 0.5) colorClass = 'bg-yellow-400'; // Amarillo (Parcial)
+                else colorClass = 'bg-red-500'; // Rojo (No cumple o menor a la mitad)
+            }
 
             return (
               <div key={p.id} onClick={() => setSelectedProceso(p)} className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg hover:-translate-y-1 transition-all group relative overflow-hidden cursor-pointer">
-                <div className={`absolute top-0 left-0 w-1.5 h-full ${cumplimiento >= 80 ? 'bg-green-500' : cumplimiento >= 70 ? 'bg-yellow-400' : 'bg-red-500'}`}></div>
+                <div className={`absolute top-0 left-0 w-1.5 h-full ${colorClass}`}></div>
                 <div className="pl-4">
                     <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded uppercase tracking-wider">{p.codigo_proceso}</span>
                     <h4 className="text-lg font-bold text-slate-800 mt-2 mb-4 group-hover:text-red-700 transition-colors">{p.nombre_proceso}</h4>
@@ -64,7 +74,7 @@ const ProcesosView: React.FC = () => {
                         <div className="text-right"><p className="text-[10px] font-bold text-slate-400 uppercase">Métricas</p><p className="text-xl font-bold text-slate-700">{inds}</p></div>
                     </div>
                     <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${cumplimiento >= 80 ? 'bg-green-500' : 'bg-red-500'}`} style={{width: `${cumplimiento}%`}}></div>
+                        <div className={`h-full rounded-full ${colorClass}`} style={{width: `${cumplimiento}%`}}></div>
                     </div>
                     <div className="flex gap-4 mt-4 pt-4 border-t border-slate-50 justify-between items-center">
                         <div className="flex gap-4">
@@ -106,7 +116,6 @@ const ProcesosView: React.FC = () => {
 const ProcessModal = ({ proceso, indicadores, registros, onClose }: any) => {
     const navigate = useNavigate();
     const goToHistory = (indicadorNombre: string) => {
-        // Redirige al histórico pasando filtros
         navigate('/historico', { state: { filterProceso: proceso.nombre_proceso, filterIndicador: indicadorNombre } });
     };
 
@@ -126,10 +135,10 @@ const ProcessModal = ({ proceso, indicadores, registros, onClose }: any) => {
                                 <div key={ind.id} onClick={() => goToHistory(ind.nombre_indicador)} className="border border-slate-100 rounded-xl p-4 hover:shadow-md hover:border-red-100 transition-all cursor-pointer group flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="bg-red-50 p-3 rounded-lg text-red-600 group-hover:bg-red-600 group-hover:text-white transition-colors"><Activity size={18} /></div>
-                                        <div><p className="font-bold text-slate-800 text-sm group-hover:text-red-700 transition-colors">{ind.nombre_indicador}</p><div className="flex gap-3 mt-1"><span className="text-[10px] text-slate-400 font-bold uppercase bg-slate-50 px-1.5 rounded border border-slate-100">{ind.codigo_indicador}</span><span className="text-[10px] text-slate-400 font-bold uppercase">Meta: {ind.meta}%</span></div></div>
+                                        <div><p className="font-bold text-slate-800 text-sm group-hover:text-red-700 transition-colors">{ind.nombre_indicador}</p><div className="flex gap-3 mt-1"><span className="text-[10px] text-slate-400 font-bold uppercase bg-slate-50 px-1.5 rounded border border-slate-100">{ind.codigo_indicador}</span><span className="text-[10px] text-slate-400 font-bold uppercase">Meta: {ind.meta}</span></div></div>
                                     </div>
                                     <div className="text-right">
-                                        {lastReg ? <><span className="block text-lg font-black text-slate-900">{lastReg.resultado_mensual}%</span><span className={`text-[9px] font-bold uppercase ${lastReg.cumple_meta ? 'text-green-600' : 'text-red-600'}`}>{lastReg.cumple_meta ? 'Cumple' : 'No Cumple'}</span></> : <span className="text-[10px] font-bold text-slate-300 uppercase">Sin datos</span>}
+                                        {lastReg ? <><span className="block text-lg font-black text-slate-900">{lastReg.resultado_mensual}</span><span className={`text-[9px] font-bold uppercase ${lastReg.cumple_meta ? 'text-green-600' : 'text-red-600'}`}>{lastReg.cumple_meta ? 'Cumple' : 'No Cumple'}</span></> : <span className="text-[10px] font-bold text-slate-300 uppercase">Sin datos</span>}
                                     </div>
                                 </div>
                             );
