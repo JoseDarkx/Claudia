@@ -4,6 +4,18 @@ import { createClient } from '@supabase/supabase-js';
 import { Proceso, UserProfile, Indicador } from '../types';
 import { Settings, Users, Activity, Plus, Edit2, Trash2, Filter, X, Save, AlertCircle } from 'lucide-react';
 
+// --- CAMBIO 1: Cliente Admin global (sin persistencia) para evitar conflictos ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false, 
+    detectSessionInUrl: false
+  }
+});
+
 const AdminPanel: React.FC = () => {
   const [indicadores, setIndicadores] = useState<Indicador[]>([]);
   const [usuarios, setUsuarios] = useState<UserProfile[]>([]);
@@ -39,9 +51,7 @@ const AdminPanel: React.FC = () => {
   const handleDelete = async (id: string, table: string) => {
     if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
     
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+    // (Se eliminaron las 3 líneas locales de supabaseAdmin)
 
     try {
         const { error } = await supabaseAdmin.from(table).delete().eq('id', id);
@@ -180,6 +190,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                 fuente_informacion: item?.fuente_informacion || '',
                 umbral_verde: item?.umbral_verde || 80,
                 umbral_amarillo: item?.umbral_amarillo || 70,
+                umbral_rojo: item?.umbral_rojo || 0, // <-- CAMBIO 2: Agregada la variable del rojo
                 estado: item?.estado || 'Activo'
             };
         } else {
@@ -196,9 +207,8 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-        const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+        
+        // (Se eliminaron las 3 líneas locales de supabaseAdmin)
 
         try {
             if (type === 'indicadores') {
@@ -207,6 +217,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                     meta: Number(formData.meta), 
                     umbral_verde: Number(formData.umbral_verde), 
                     umbral_amarillo: Number(formData.umbral_amarillo),
+                    umbral_rojo: Number(formData.umbral_rojo), // <-- CAMBIO 2: Se envía a Supabase
                     proceso_id: formData.proceso_id === "" ? null : formData.proceso_id 
                 };
                 
@@ -229,11 +240,10 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                         await supabaseAdmin.auth.admin.updateUserById(item.id, { password: formData.password });
                     } 
                 } else {
-                    // --- CAMBIO AQUI: Creación de usuario activado automáticamente ---
                     const { data, error: createError } = await supabaseAdmin.auth.admin.createUser({
                         email: formData.email,
                         password: formData.password || '123456',
-                        email_confirm: true, // Auto-verificar correo
+                        email_confirm: true, 
                         user_metadata: { role: formData.role, full_name: formData.full_name }
                     });
                     
@@ -253,7 +263,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
             }
             onSave();
             
-            // --- CAMBIO AQUI: Alertas de éxito ---
             if (!isEdit) {
                 alert(type === 'indicadores' ? "✅ Indicador creado exitosamente." : "✅ Usuario creado y activado exitosamente.");
             } else {
@@ -311,7 +320,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                                 <Select label="Frecuencia" value={formData.frecuencia} onChange={(v:any) => setFormData({...formData, frecuencia: v})} options={['Mensual', 'Bimestral', 'Trimestral', 'Semestral', 'Anual']} />
                             </div>
 
-                            {/* SECCIÓN DE SEMAFORIZACIÓN */}
                             <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
                                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
                                     <Activity size={16} className="text-slate-500" />
@@ -328,9 +336,8 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-bold text-red-600 uppercase">🔴 Crítico {'<'}</label>
-                                        <div className="w-full p-2 text-sm font-bold bg-slate-100 border rounded-lg text-slate-400">
-                                            {formData.umbral_amarillo || 0}
-                                        </div>
+                                        {/* CAMBIO 2: Ahora es un input interactivo que guarda en umbral_rojo */}
+                                        <input type="number" value={formData.umbral_rojo} onChange={e => setFormData({...formData, umbral_rojo: e.target.value})} className="w-full p-2 text-sm font-bold border rounded-lg focus:ring-2 focus:ring-red-100" />
                                     </div>
                                 </div>
                             </div>
