@@ -48,23 +48,31 @@ serve(async (req) => {
     // ------------------------------------------------------------
 
     const body = await req.json();
-    const { email, password, full_name, role, proceso_id } = body;
+    const { email, password, full_name, role, proceso_id, nombre_proceso } = body;
 
     console.log(`CREAR-USUARIO: Procesando ${email} solicitado por ${user.email}`);
 
     if (!email || !full_name) throw new Error("Email y Nombre son obligatorios");
 
-    // 1. Crear usuario en Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password: password || '123456',
-      email_confirm: true,
-      user_metadata: { full_name, role }
+    // 1. Invitar usuario por Email (esto dispara la plantilla de "Invite User")
+    console.log("Enviando invitación por email...");
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      data: { full_name, role, nombre_proceso }
     });
 
-    if (authError) throw new Error(`Error Auth: ${authError.message}`);
+    if (authError) throw new Error(`Error Auth (Invitation): ${authError.message}`);
+    console.log("Respuesta de invitación (authData):", JSON.stringify(authData.user.user_metadata));
 
-    // 2. Insertar/Actualizar perfil
+    // 2. Definir la contraseña y marcar como verificado (para que entre directo)
+    console.log("Asignando contraseña y confirmando email...");
+    const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
+      password: password || '123456',
+      email_confirm: true
+    });
+
+    if (updateAuthError) console.warn("Aviso: No se pudo setear la contraseña inicial, el usuario deberá definirla:", updateAuthError.message);
+
+    // 3. Insertar/Actualizar perfil en la tabla 'profiles'
     const { error: profileInsertError } = await supabaseAdmin.from('profiles').upsert([
       {
         id: authData.user.id,
@@ -75,7 +83,7 @@ serve(async (req) => {
       }
     ]);
 
-    if (profileInsertError) throw new Error(`Error DB: ${profileInsertError.message}`);
+    if (profileInsertError) throw new Error(`Error DB (Profile): ${profileInsertError.message}`);
 
     return new Response(JSON.stringify({ success: true, message: "Usuario creado correctamente" }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

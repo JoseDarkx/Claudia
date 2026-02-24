@@ -134,7 +134,11 @@ const AdminPanel: React.FC = () => {
                                             <span className="text-sm font-bold text-slate-800">{u.full_name || 'Sin Nombre'}</span>
                                             <span className={`text-[9px] px-2 py-0.5 rounded border uppercase font-bold ${u.role === 'Administrador' ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>{u.role}</span>
                                         </div>
-                                        <p className="text-xs text-slate-500 font-medium">{u.email} • {u.procesos?.nombre_proceso || 'Sin proceso asignado'}</p>
+                                        <p className="text-xs text-slate-500 font-medium">
+                                            {u.email} • {u.role === 'Administrador'
+                                                ? 'Sistema de Gestión / Acceso Global'
+                                                : `Líder de ${u.procesos?.nombre_proceso || procesos.find(p => p.id === u.proceso_id)?.nombre_proceso || 'proceso pendiente'}`}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="flex gap-1">
@@ -294,7 +298,8 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                             password: formData.password || '123456',
                             full_name: formData.full_name,
                             role: formData.role,
-                            proceso_id: formData.proceso_id || null
+                            proceso_id: formData.proceso_id || null,
+                            nombre_proceso: procesos.find((p: any) => p.id === formData.proceso_id)?.nombre_proceso || ''
                         }
                     });
 
@@ -328,7 +333,7 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
             onSave();
 
             if (!isEdit) {
-                alert(type === 'indicadores' ? "✅ Indicador creado exitosamente." : "✅ Usuario creado y activado exitosamente.");
+                alert(type === 'indicadores' ? "✅ Indicador creado exitosamente." : "✅ Usuario creado. Se ha enviado un correo de bienvenida.");
             } else {
                 alert("✅ Registro actualizado correctamente.");
             }
