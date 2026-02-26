@@ -11,12 +11,69 @@ const RegistroIndicadores: React.FC = () => {
 
     // Estados del Formulario
     const [formData, setFormData] = useState({
+        id: '', // ID del registro si estamos editando
         indicador_id: '',
         periodo: new Date().toISOString().slice(0, 10),
         resultado: '',
         analisis: '',
         plan: ''
     });
+
+    // Detectar modo edición desde URL
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.hash.split('?')[1]);
+        const editId = params.get('edit');
+        if (editId) {
+            const fetchExisting = async () => {
+                const { data, error } = await supabase.from('registro_mensual_indicadores').select('*').eq('id', editId).maybeSingle();
+                if (data && !error) {
+                    if (data.estado_registro !== 'Borrador') {
+                        alert("Este registro ya fue enviado y no puede editarse.");
+                        window.location.hash = '#/historico';
+                        return;
+                    }
+                    setFormData({
+                        id: data.id,
+                        indicador_id: data.indicador_id,
+                        periodo: data.periodo,
+                        resultado: String(data.resultado_mensual),
+                        analisis: data.observaciones || '',
+                        plan: data.accion_mejora || ''
+                    });
+                }
+            };
+            fetchExisting();
+        }
+    }, []);
+
+    // Carga automática si ya existe un borrador al cambiar indicador/periodo (si no estamos en modo edición forzada)
+    useEffect(() => {
+        if (!formData.indicador_id || !formData.periodo || formData.id) return;
+
+        const checkExisting = async () => {
+            const { data } = await supabase
+                .from('registro_mensual_indicadores')
+                .select('*')
+                .eq('indicador_id', formData.indicador_id)
+                .eq('periodo', formData.periodo)
+                .maybeSingle();
+
+            if (data && data.estado_registro === 'Borrador') {
+                // Si encontramos un borrador, preguntamos al usuario si quiere cargarlo
+                if (confirm(`Se encontró un borrador guardado para este periodo. ¿Deseas cargarlo para continuar editando?`)) {
+                    setFormData({
+                        id: data.id,
+                        indicador_id: data.indicador_id,
+                        periodo: data.periodo,
+                        resultado: String(data.resultado_mensual),
+                        analisis: data.observaciones || '',
+                        plan: data.accion_mejora || ''
+                    });
+                }
+            }
+        };
+        checkExisting();
+    }, [formData.indicador_id, formData.periodo]);
 
     useEffect(() => {
         const fetchMyIndicators = async () => {
@@ -39,9 +96,14 @@ const RegistroIndicadores: React.FC = () => {
         if (!formData.indicador_id || !formData.resultado || !formData.periodo) return alert("Complete los campos obligatorios");
         if (!selectedInd) return;
 
-        const pct = calcularCumplimiento(Number(formData.resultado), selectedInd.meta);
+        const pct = calcularCumplimiento(
+            Number(formData.resultado),
+            selectedInd.meta,
+            selectedInd.umbral_verde,
+            selectedInd.umbral_amarillo
+        );
 
-        const payload = {
+        const payload: any = {
             indicador_id: formData.indicador_id,
             proceso_id: user?.proceso_id,
             periodo: formData.periodo,
@@ -50,7 +112,7 @@ const RegistroIndicadores: React.FC = () => {
             unidad_medida: selectedInd.unidad_medida,
             cumple_meta: Number(formData.resultado) >= selectedInd.meta,
             porcentaje_cumplimiento: pct,
-            semaforo: determinarSemaforoDinamico(pct, selectedInd.umbral_verde, selectedInd.umbral_amarillo),
+            semaforo: determinarSemaforoDinamico(Number(formData.resultado), selectedInd.umbral_verde, selectedInd.umbral_amarillo),
             observaciones: formData.analisis,
             accion_mejora: formData.plan,
             usuario_sistema: user?.id,
@@ -59,22 +121,49 @@ const RegistroIndicadores: React.FC = () => {
         };
 
         try {
-            // FIX: Validar duplicados antes de insertar
-            const { data: existente } = await supabase
-                .from('registro_mensual_indicadores')
-                .select('id')
-                .eq('indicador_id', formData.indicador_id)
-                .eq('periodo', formData.periodo)
-                .maybeSingle();
+            if (formData.id) {
+                // MODO ACTUALIZACIÓN
+                const { error } = await supabase.from('registro_mensual_indicadores').update(payload).eq('id', formData.id);
+                if (error) throw error;
+                alert(estado === 'Borrador' ? "Borrador actualizado" : "Registro enviado oficialmente");
+            } else {
+                // MODO NUEVO: Validar duplicados finales (solo si no es borrador o si queremos ser estrictos)
+                const { data: existente } = await supabase
+                    .from('registro_mensual_indicadores')
+                    .select('id, estado_registro')
+                    .eq('indicador_id', formData.indicador_id)
+                    .eq('periodo', formData.periodo)
+                    .maybeSingle();
 
-            if (existente) {
-                return alert(`Ya existe un registro para este indicador en el periodo ${formData.periodo}. Edita el registro existente desde el Histórico.`);
+                if (existente) {
+                    if (existente.estado_registro === 'Borrador') {
+                        const { error } = await supabase.from('registro_mensual_indicadores').update(payload).eq('id', existente.id);
+                        if (error) throw error;
+                    } else {
+                        return alert(`Ya existe un registro ENVIADO para este periodo. No se puede duplicar.`);
+                    }
+                } else {
+                    const { error } = await supabase.from('registro_mensual_indicadores').insert([payload]);
+                    if (error) throw error;
+                }
+                alert(estado === 'Borrador' ? "Borrador guardado exitosamente" : "Registro enviado correctamente");
             }
 
-            const { error } = await supabase.from('registro_mensual_indicadores').insert([payload]);
-            if (error) throw error;
-            alert("Registro guardado correctamente");
-            setFormData(prev => ({ ...prev, resultado: '', analisis: '', plan: '' }));
+            // Limpiar y redirigir si se envió
+            if (estado === 'Enviado') {
+                setFormData({ id: '', indicador_id: '', periodo: new Date().toISOString().slice(0, 10), resultado: '', analisis: '', plan: '' });
+                window.location.hash = '#/historico';
+            } else {
+                // Si es borrador, intentar obtener el ID si era nuevo para permitir seguir editando
+                if (!formData.id) {
+                    const { data } = await supabase.from('registro_mensual_indicadores')
+                        .select('id')
+                        .eq('indicador_id', formData.indicador_id)
+                        .eq('periodo', formData.periodo)
+                        .maybeSingle();
+                    if (data) setFormData(prev => ({ ...prev, id: data.id }));
+                }
+            }
         } catch (e: any) {
             alert("Error: " + e.message);
         }
@@ -161,6 +250,13 @@ const RegistroIndicadores: React.FC = () => {
                                 <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Tipo</span>
                                 <span className="bg-white border border-slate-200 px-2 py-1 rounded text-[10px] font-bold uppercase text-slate-500">{selectedInd.tipo_indicador}</span>
                             </div>
+                        </div>
+
+                        <div className="bg-white border-l-4 border-red-500 p-4 rounded-lg mb-6 shadow-sm">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Fórmula de Cálculo</span>
+                            <p className="text-sm font-bold text-slate-700 italic">
+                                "{selectedInd.formula_calculo || 'No definida'}"
+                            </p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">

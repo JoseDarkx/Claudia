@@ -5,7 +5,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Label, Legend
 } from 'recharts';
 import { RegistroMensual, Proceso } from '../types';
-import { Activity, Target, CheckCircle2, XCircle, X, List, TrendingUp, User } from 'lucide-react';
+import { Activity, Target, CheckCircle2, XCircle, X, List, TrendingUp, User, Filter } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
     const { user } = useAuth();
@@ -24,6 +24,10 @@ const AdminDashboard = () => {
     const [procesos, setProcesos] = useState<Proceso[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalInfo, setModalInfo] = useState<{ title: string; data: any[]; type: 'proceso' | 'indicador' } | null>(null);
+    const [filtroFrecuencia, setFiltroFrecuencia] = useState<string>('Todas');
+
+
+
 
     useEffect(() => {
         const fetchData = async () => {
@@ -32,7 +36,7 @@ const AdminDashboard = () => {
                 const [pRes, rRes] = await Promise.all([
                     supabase.from('procesos').select('id, codigo_proceso, nombre_proceso').order('codigo_proceso'),
                     supabase.from('registro_mensual_indicadores')
-                        .select('id, proceso_id, periodo, porcentaje_cumplimiento, resultado_mensual, meta, cumple_meta, unidad_medida, indicadores(nombre_indicador), procesos(nombre_proceso)')
+                        .select('id, proceso_id, periodo, porcentaje_cumplimiento,resultado_mensual, meta, cumple_meta, semaforo, unidad_medida, estado_registro, indicadores(nombre_indicador, frecuencia), procesos(nombre_proceso)')
                         .order('periodo', { ascending: false })
                         .limit(300)
                 ]);
@@ -52,25 +56,32 @@ const AdminDashboard = () => {
     }, []);
 
     const ultimoPeriodo = useMemo(() => registros?.[0]?.periodo, [registros]);
-    const actuales = useMemo(() => registros.filter((r: any) => r.periodo === ultimoPeriodo), [registros, ultimoPeriodo]);
+    const actuales = useMemo(() => {
+        // Filtramos por periodo y nos aseguramos de IGNORAR los borradores para las métricas oficiales
+        const porPeriodo = registros.filter((r: any) => r.periodo === ultimoPeriodo && r.estado_registro !== 'Borrador');
+        if (filtroFrecuencia === 'Todas') return porPeriodo;
+        return porPeriodo.filter((r: any) => r.indicadores?.frecuencia === filtroFrecuencia);
+    }, [registros, ultimoPeriodo, filtroFrecuencia]);
 
     // --- CORRECCIÓN: Lógica de colores basada estrictamente en cumple_meta ---
     const barData = useMemo(() => {
         return (procesos || []).map((p: any) => {
             const regs = actuales.filter((r: any) => r.proceso_id === p.id);
             const hasData = regs.length > 0;
-            // Mantenemos el número (ej. 98%) para la gráfica, pero el color obedece a la meta.
             const prom = hasData ? regs.reduce((a, c) => a + Number(c.porcentaje_cumplimiento || 0), 0) / regs.length : 0;
 
-            const cumplenMeta = regs.filter(r => r.cumple_meta).length;
-            const proporcionCumple = hasData ? cumplenMeta / regs.length : 0;
+            // Lógica de color basada en el "Peor Escenario" del semáforo
+            let fill = '#cbd5e1'; // Gris por defecto (Sin datos)
+            if (hasData) {
+                const hasRed = regs.some(r => r.semaforo === 'Rojo');
+                const hasYellow = regs.some(r => r.semaforo === 'Amarillo');
 
-            let fill = '#ef4444'; // Rojo (No cumple)
-            if (!hasData) fill = '#cbd5e1'; // Gris (Sin datos)
-            else if (proporcionCumple === 1) fill = '#10b981'; // Verde (Cumplen TODOS)
-            else if (proporcionCumple >= 0.5) fill = '#f59e0b'; // Amarillo (Parcial)
+                if (hasRed) fill = '#ef4444'; // Rojo predomina
+                else if (hasYellow) fill = '#f59e0b'; // Amarillo si no hay rojos
+                else fill = '#10b981'; // Verde solo si todos son verdes
+            }
 
-            let valCalculado = Math.round(prom);
+            let valCalculado = Math.min(100, Math.round(prom));
             if (isNaN(valCalculado)) valCalculado = 0;
 
             return {
@@ -89,7 +100,9 @@ const AdminDashboard = () => {
 
     const cumplimientoGlobal = useMemo(() => {
         if (procesosConDatos.length === 0) return 0;
-        return Math.round(procesosConDatos.reduce((acc, curr) => acc + curr.val, 0) / procesosConDatos.length);
+        const promedioBruto = procesosConDatos.reduce((acc, curr) => acc + curr.val, 0) / procesosConDatos.length;
+        // Limitamos el promedio a un máximo de 100% para evitar inconsistencias lógicas en el dashboard
+        return Math.min(100, Math.round(promedioBruto));
     }, [procesosConDatos]);
 
     // --- CORRECCIÓN: Asignación limpia por colores para las tarjetas ---
@@ -118,6 +131,30 @@ const AdminDashboard = () => {
                 <Activity size={48} className="absolute right-10 top-1/2 -translate-y-1/2 text-white/10" />
             </div>
 
+            {/* BARRA DE FILTROS SUPERIOR */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 z-20 relative">
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-slate-500 font-bold text-xs uppercase tracking-wider">
+                        <Filter size={16} />
+                        Frecuencia:
+                    </div>
+                    <select
+                        className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none font-medium cursor-pointer"
+                        value={filtroFrecuencia}
+                        onChange={(e) => setFiltroFrecuencia(e.target.value)}
+                    >
+                        <option value="Todas">Todas</option>
+                        <option value="Mensual">Mensuales</option>
+                        <option value="Bimestral">Bimestrales</option>
+                        <option value="Trimestral">Trimestrales</option>
+                        <option value="Semestral">Semestrales</option>
+                        <option value="Anual">Anuales</option>
+                    </select>
+                </div>
+
+
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <KpiCard title="Total Procesos" value={procesos.length} icon={<Target size={24} />} color="bg-blue-600" onClick={() => handleCardClick('total')} />
                 <KpiCard title="Indicadores Activos" value={actuales.length} icon={<Activity size={24} />} color="bg-purple-600" onClick={() => handleCardClick('activos')} />
@@ -143,20 +180,53 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center relative">
-                    <h3 className="absolute top-6 left-6 text-xs font-bold text-slate-500 uppercase tracking-wider">Cumplimiento Global</h3>
-                    <div className="w-full h-[250px]">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center relative overflow-hidden">
+                    <div className="w-full flex justify-between items-start mb-2">
+                        <div>
+                            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cumplimiento Global</h3>
+                            <p className="text-[10px] text-slate-400 mt-1 uppercase">Promedio de Procesos Activos</p>
+                        </div>
+                        <div className={`p-2 rounded-lg text-white shadow-sm ${colorGlobalPie === '#10b981' ? 'bg-green-500' : colorGlobalPie === '#ef4444' ? 'bg-red-500' : 'bg-yellow-400'}`}>
+                            <Target size={18} />
+                        </div>
+                    </div>
+
+                    <div className="w-full flex-1 min-h-[220px] relative mt-2">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
-                                <Pie data={[{ value: cumplimientoGlobal }, { value: 100 - cumplimientoGlobal }]} innerRadius={80} outerRadius={100} startAngle={90} endAngle={-270} dataKey="value">
+                                <Pie
+                                    cy="70%"
+                                    data={[
+                                        { value: Math.min(100, cumplimientoGlobal) },
+                                        { value: Math.max(0, 100 - cumplimientoGlobal) }
+                                    ]}
+                                    innerRadius={90}
+                                    outerRadius={115}
+                                    startAngle={180}
+                                    endAngle={0}
+                                    dataKey="value"
+                                    stroke="none"
+                                >
                                     <Cell fill={colorGlobalPie} />
                                     <Cell fill="#f1f5f9" />
-                                    <Label value={`${cumplimientoGlobal}%`} position="center" className="text-4xl font-bold fill-slate-800" />
                                 </Pie>
                             </PieChart>
                         </ResponsiveContainer>
+                        <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2 flex flex-col items-center pb-2 w-full">
+                            <span className="text-5xl font-black tracking-tighter" style={{ color: colorGlobalPie }}>
+                                {cumplimientoGlobal}%
+                            </span>
+                            {cumplimientoGlobal > 100 ? (
+                                <span className="text-[10px] font-bold text-green-700 bg-green-100 px-3 py-1 rounded-full mt-2 flex items-center justify-center gap-1 border border-green-200">
+                                    <TrendingUp size={12} /> +{cumplimientoGlobal - 100}% SOBRE META
+                                </span>
+                            ) : (
+                                <span className="text-[11px] font-bold text-slate-400 uppercase mt-2 tracking-widest">
+                                    Meta: 100%
+                                </span>
+                            )}
+                        </div>
                     </div>
-                    <p className="text-xs text-slate-400 font-bold uppercase mt-[-20px]">Promedio de Procesos Activos</p>
                 </div>
             </div>
 
@@ -225,7 +295,7 @@ const LeaderDashboard = ({ user }: { user: any }) => {
             try {
                 const { data: graphData, error } = await supabase
                     .from('registro_mensual_indicadores')
-                    .select('id, indicador_id, resultado_mensual, meta, periodo, cumple_meta, estado_registro, accion_mejora, indicadores(codigo_indicador, nombre_indicador)')
+                    .select('id, indicador_id, resultado_mensual, meta, periodo, cumple_meta, semaforo, estado_registro, accion_mejora, indicadores(codigo_indicador, nombre_indicador)')
                     .eq('proceso_id', user.proceso_id)
                     .order('periodo', { ascending: false })
                     .limit(20);
@@ -243,23 +313,26 @@ const LeaderDashboard = ({ user }: { user: any }) => {
         fetchData();
     }, [user]);
 
+    // Separamos registros oficiales (Enviados/Revisados) de los borradores para las métricas
+    const registrosOficiales = useMemo(() => registros.filter(r => r.estado_registro !== 'Borrador'), [registros]);
+
     const chartData = useMemo(() => {
-        // FIX: Ahora lee directamente del estado 'registros' en lugar de window.tempGraphData
-        if (registros.length === 0) return [];
-        const lastPeriod = registros[0].periodo;
-        return registros
+        if (registrosOficiales.length === 0) return [];
+        const lastPeriod = registrosOficiales[0].periodo;
+        return registrosOficiales
             .filter((r: any) => r.periodo === lastPeriod)
             .map((r: any) => ({
                 name: r.indicadores?.codigo_indicador || 'N/A',
                 Meta: Number(r.meta) || 0,
                 Resultado: Number(r.resultado_mensual) || 0
             }));
-    }, [registros]);
+    }, [registrosOficiales]);
 
-    const ultimoPeriodo = registros[0]?.periodo || 'N/A';
-    const totalRegistros = registros.length;
-    const cumplen = registros.filter(r => r.cumple_meta).length;
-    const noCumplen = registros.filter(r => !r.cumple_meta).length;
+    const ultimoPeriodo = registrosOficiales[0]?.periodo || 'N/A';
+    const totalRegistros = registrosOficiales.length;
+    const cumplen = registrosOficiales.filter(r => r.semaforo === 'Verde').length; // Ahora basado en semaforo
+    const riesgo = registrosOficiales.filter(r => r.semaforo === 'Amarillo').length;
+    const noCumplen = registrosOficiales.filter(r => r.semaforo === 'Rojo').length;
     const porcentaje = totalRegistros > 0 ? Math.round((cumplen / totalRegistros) * 100) : 0;
 
     if (loading) return <div className="p-10 text-center text-slate-400 text-xs font-bold uppercase">Cargando Mi Vista...</div>;
@@ -280,11 +353,11 @@ const LeaderDashboard = ({ user }: { user: any }) => {
                     <div className="bg-blue-600 text-white p-3 rounded-lg"><List size={20} /></div>
                 </div>
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                    <div><p className="text-[10px] font-bold text-slate-500 uppercase">Indicadores Cumplen</p><p className="text-3xl font-bold text-green-600">{cumplen}</p></div>
-                    <div className="bg-green-100 text-green-600 p-3 rounded-lg"><CheckCircle2 size={20} /></div>
+                    <div><p className="text-[10px] font-bold text-slate-500 uppercase">En Seguimiento</p><p className="text-3xl font-bold text-amber-600">{riesgo}</p></div>
+                    <div className="bg-amber-100 text-amber-600 p-3 rounded-lg"><Activity size={20} /></div>
                 </div>
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
-                    <div><p className="text-[10px] font-bold text-slate-500 uppercase">Indicadores Incumplen</p><p className="text-3xl font-bold text-red-600">{noCumplen}</p></div>
+                    <div><p className="text-[10px] font-bold text-slate-500 uppercase">Indicadores Críticos</p><p className="text-3xl font-bold text-red-600">{noCumplen}</p></div>
                     <div className="bg-red-100 text-red-600 p-3 rounded-lg"><XCircle size={20} /></div>
                 </div>
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">

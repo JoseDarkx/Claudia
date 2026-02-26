@@ -21,19 +21,30 @@ const AdminPanel: React.FC = () => {
 
     const fetchData = async () => {
         setLoading(true);
+        console.log("🚀 [AdminPanel] Iniciando carga de datos...");
         try {
             const [iRes, uRes, pRes] = await Promise.all([
-                supabase.from('indicadores').select('*, procesos(*)').order('codigo_indicador'),
-                supabase.from('profiles').select('*, procesos(*)').order('full_name'),
-                supabase.from('procesos').select('*').order('codigo_proceso')
+                supabase.from('indicadores').select('id, codigo_indicador, nombre_indicador, tipo_indicador, estado, descripcion, meta, unidad_medida, frecuencia, procesos(id, nombre_proceso)').order('codigo_indicador'),
+                supabase.from('profiles').select('id, full_name, role, email, proceso_id, procesos(id, nombre_proceso)').order('full_name'),
+                supabase.from('procesos').select('id, nombre_proceso, codigo_proceso').order('codigo_proceso')
             ]);
 
-            setIndicadores(iRes.data || []);
-            setUsuarios(uRes.data || []);
-            setProcesos(pRes.data || []);
+            console.log("📊 [AdminPanel] Respuesta Indicadores:", iRes.data?.length || 0, "registros", iRes.error ? "❌ ERROR" : "✅");
+            if (iRes.error) console.error("❌ Detalle Error Indicadores:", iRes.error);
+
+            console.log("👥 [AdminPanel] Respuesta Usuarios:", uRes.data?.length || 0, "registros", uRes.error ? "❌ ERROR" : "✅");
+            if (uRes.error) console.error("❌ Detalle Error Usuarios:", uRes.error);
+
+            console.log("⚙️ [AdminPanel] Respuesta Procesos:", pRes.data?.length || 0, "registros", pRes.error ? "❌ ERROR" : "✅");
+            if (pRes.error) console.error("❌ Detalle Error Procesos:", pRes.error);
+
+            setIndicadores((iRes.data as any[]) || []);
+            setUsuarios((uRes.data as any[]) || []);
+            setProcesos((pRes.data as any[]) || []);
         } catch (e) {
-            console.error("Error cargando datos:", e);
+            console.error("🔥 [AdminPanel] Error Crítico en fetchData:", e);
         } finally {
+            console.log("🏁 [AdminPanel] Carga finalizada.");
             setLoading(false);
         }
     };
