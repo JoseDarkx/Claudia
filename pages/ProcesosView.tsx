@@ -185,4 +185,4 @@ const ProcessModal = ({ proceso, indicadores, registros, onClose }: any) => {
   );
 };
 
-export default ProcesosView;
+export default ProcesosView;  

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../App';
 import { ClipboardList, AlertCircle, Save, Eraser, Send, Info, Target, Ruler, Activity, CalendarDays } from 'lucide-react';
 import { calcularCumplimiento, determinarSemaforoDinamico } from '../utils/calculos';
+import Swal from 'sweetalert2'; // ✨ Importamos SweetAlert2
 
 const RegistroIndicadores: React.FC = () => {
     const { user } = useAuth();
@@ -28,7 +29,14 @@ const RegistroIndicadores: React.FC = () => {
                 const { data, error } = await supabase.from('registro_mensual_indicadores').select('*').eq('id', editId).maybeSingle();
                 if (data && !error) {
                     if (data.estado_registro !== 'Borrador') {
-                        alert("Este registro ya fue enviado y no puede editarse.");
+                        // ✨ Alerta de advertencia
+                        Swal.fire({
+                            title: 'Acción no permitida',
+                            text: 'Este registro ya fue enviado y no puede editarse.',
+                            icon: 'warning',
+                            confirmButtonColor: '#b91c1c',
+                            borderRadius: '1rem',
+                        });
                         window.location.hash = '#/historico';
                         return;
                     }
@@ -46,7 +54,7 @@ const RegistroIndicadores: React.FC = () => {
         }
     }, []);
 
-    // Carga automática si ya existe un borrador al cambiar indicador/periodo (si no estamos en modo edición forzada)
+    // Carga automática si ya existe un borrador al cambiar indicador/periodo
     useEffect(() => {
         if (!formData.indicador_id || !formData.periodo || formData.id) return;
 
@@ -59,8 +67,20 @@ const RegistroIndicadores: React.FC = () => {
                 .maybeSingle();
 
             if (data && data.estado_registro === 'Borrador') {
-                // Si encontramos un borrador, preguntamos al usuario si quiere cargarlo
-                if (confirm(`Se encontró un borrador guardado para este periodo. ¿Deseas cargarlo para continuar editando?`)) {
+                // ✨ Reemplazo de confirm()
+                const result = await Swal.fire({
+                    title: 'Borrador encontrado',
+                    text: 'Se encontró un borrador guardado para este periodo. ¿Deseas cargarlo para continuar editando?',
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonColor: '#b91c1c',
+                    cancelButtonColor: '#64748b',
+                    confirmButtonText: 'Sí, cargar',
+                    cancelButtonText: 'Ignorar',
+                    borderRadius: '1rem',
+                });
+
+                if (result.isConfirmed) {
                     setFormData({
                         id: data.id,
                         indicador_id: data.indicador_id,
@@ -93,7 +113,17 @@ const RegistroIndicadores: React.FC = () => {
     const selectedInd = indicadores.find(i => i.id === formData.indicador_id);
 
     const handleSubmit = async (estado: 'Borrador' | 'Enviado') => {
-        if (!formData.indicador_id || !formData.resultado || !formData.periodo) return alert("Complete los campos obligatorios");
+        if (!formData.indicador_id || !formData.resultado || !formData.periodo) {
+            // ✨ Alerta de campos obligatorios
+            Swal.fire({
+                title: 'Campos incompletos',
+                text: 'Por favor, complete los campos obligatorios.',
+                icon: 'warning',
+                confirmButtonColor: '#b91c1c',
+                borderRadius: '1rem',
+            });
+            return;
+        }
         if (!selectedInd) return;
 
         const pct = calcularCumplimiento(
@@ -125,9 +155,17 @@ const RegistroIndicadores: React.FC = () => {
                 // MODO ACTUALIZACIÓN
                 const { error } = await supabase.from('registro_mensual_indicadores').update(payload).eq('id', formData.id);
                 if (error) throw error;
-                alert(estado === 'Borrador' ? "Borrador actualizado" : "Registro enviado oficialmente");
+
+                // ✨ Éxito al actualizar
+                Swal.fire({
+                    title: estado === 'Borrador' ? 'Borrador actualizado' : 'Registro enviado',
+                    text: estado === 'Borrador' ? 'El borrador se actualizó correctamente.' : 'El registro fue enviado oficialmente.',
+                    icon: 'success',
+                    confirmButtonColor: '#10b981',
+                    borderRadius: '1rem',
+                });
             } else {
-                // MODO NUEVO: Validar duplicados finales (solo si no es borrador o si queremos ser estrictos)
+                // MODO NUEVO: Validar duplicados finales
                 const { data: existente } = await supabase
                     .from('registro_mensual_indicadores')
                     .select('id, estado_registro')
@@ -140,13 +178,29 @@ const RegistroIndicadores: React.FC = () => {
                         const { error } = await supabase.from('registro_mensual_indicadores').update(payload).eq('id', existente.id);
                         if (error) throw error;
                     } else {
-                        return alert(`Ya existe un registro ENVIADO para este periodo. No se puede duplicar.`);
+                        // ✨ Error: Duplicado encontrado
+                        Swal.fire({
+                            title: 'Registro duplicado',
+                            text: 'Ya existe un registro ENVIADO para este periodo. No se puede duplicar.',
+                            icon: 'error',
+                            confirmButtonColor: '#b91c1c',
+                            borderRadius: '1rem',
+                        });
+                        return;
                     }
                 } else {
                     const { error } = await supabase.from('registro_mensual_indicadores').insert([payload]);
                     if (error) throw error;
                 }
-                alert(estado === 'Borrador' ? "Borrador guardado exitosamente" : "Registro enviado correctamente");
+
+                // ✨ Éxito al crear
+                Swal.fire({
+                    title: estado === 'Borrador' ? 'Borrador guardado' : 'Registro enviado',
+                    text: estado === 'Borrador' ? 'El borrador se guardó exitosamente.' : 'El registro fue enviado correctamente.',
+                    icon: 'success',
+                    confirmButtonColor: '#10b981',
+                    borderRadius: '1rem',
+                });
             }
 
             // Limpiar y redirigir si se envió
@@ -165,7 +219,14 @@ const RegistroIndicadores: React.FC = () => {
                 }
             }
         } catch (e: any) {
-            alert("Error: " + e.message);
+            // ✨ Alerta de error en el guardado
+            Swal.fire({
+                title: 'Error',
+                text: 'Hubo un problema: ' + e.message,
+                icon: 'error',
+                confirmButtonColor: '#b91c1c',
+                borderRadius: '1rem',
+            });
         }
     };
 
@@ -270,7 +331,6 @@ const RegistroIndicadores: React.FC = () => {
                             </div>
                             <div className="bg-white border border-red-100 p-3 rounded-lg flex justify-between items-center">
                                 <span className="text-[10px] font-bold text-red-700 uppercase">Rojo (Crítico)</span>
-                                {/* --- CAMBIO AQUÍ: Mostrar el umbral_rojo --- */}
                                 <span className="text-xs font-black text-red-700">&lt; {selectedInd.umbral_rojo || selectedInd.umbral_amarillo}%</span>
                             </div>
                         </div>

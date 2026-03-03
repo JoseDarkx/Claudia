@@ -5,6 +5,7 @@ import { useAuth } from '../App';
 import { RegistroMensual, Indicador, Proceso } from '../types';
 import { History, Filter, ChevronLeft, ChevronRight, Edit2, Trash2, TrendingUp, TrendingDown, LayoutDashboard, List as ListIcon, Calendar, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, Cell } from 'recharts';
+import Swal from 'sweetalert2'; // ✨ Importamos SweetAlert2
 
 const Historico: React.FC = () => {
   const { user } = useAuth();
@@ -26,14 +27,45 @@ const Historico: React.FC = () => {
   const [showDashboard, setShowDashboard] = useState(user?.role === 'Administrador');
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este registro permanentemente?')) return;
+    // ✨ Reemplazamos confirm() por Swal
+    const result = await Swal.fire({
+      title: '¿Estás seguro?',
+      text: "Esta acción no se puede deshacer y el registro se eliminará permanentemente.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#b91c1c',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      borderRadius: '1rem',
+    });
+
+    if (!result.isConfirmed) return;
+
     try {
       const { error } = await supabase.from('registro_mensual_indicadores').delete().eq('id', id);
       if (error) throw error;
+
       setRegistros(prev => prev.filter(r => r.id !== id));
-      alert('Registro eliminado correctamente');
+
+      // ✨ Alerta de éxito
+      Swal.fire({
+        title: '¡Eliminado!',
+        text: 'El registro ha sido eliminado correctamente.',
+        icon: 'success',
+        confirmButtonColor: '#10b981',
+        borderRadius: '1rem',
+      });
+
     } catch (e: any) {
-      alert('Error al eliminar: ' + e.message);
+      // ✨ Alerta de error
+      Swal.fire({
+        title: 'Error al eliminar',
+        text: e.message,
+        icon: 'error',
+        confirmButtonColor: '#b91c1c',
+        borderRadius: '1rem',
+      });
     }
   };
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Proceso, UserProfile, Indicador } from '../types';
 import { Settings, Users, Activity, Plus, Edit2, Trash2, Filter, X, Save, AlertCircle } from 'lucide-react';
+import Swal from 'sweetalert2'; // ✨ Importamos SweetAlert2
 
 // FIX SEGURIDAD: Se eliminó el import de createClient y las referencias a supabaseUrl/serviceRoleKey.
 // Todas las operaciones de admin ahora van a través de Edge Functions seguras.
@@ -50,9 +51,21 @@ const AdminPanel: React.FC = () => {
     };
 
     // FIX SEGURIDAD: handleDelete ahora usa la Edge Function 'eliminar-usuario'
-    // en lugar de crear un adminClient en el navegador.
     const handleDelete = async (id: string, table: string) => {
-        if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
+        // ✨ Reemplazo de confirm() por Swal
+        const result = await Swal.fire({
+            title: '¿Estás seguro?',
+            text: "Esta acción no se puede deshacer y el registro se eliminará permanentemente.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#b91c1c',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar',
+            borderRadius: '1rem',
+        });
+
+        if (!result.isConfirmed) return;
 
         try {
             if (table === 'profiles') {
@@ -81,8 +94,23 @@ const AdminPanel: React.FC = () => {
                 if (error) throw error;
             }
             await fetchData();
+
+            // ✨ Alerta de éxito al eliminar
+            Swal.fire({
+                title: '¡Eliminado!',
+                text: 'El registro ha sido eliminado correctamente.',
+                icon: 'success',
+                confirmButtonColor: '#10b981'
+            });
+
         } catch (err: any) {
-            alert("Error al eliminar: " + err.message);
+            // ✨ Alerta de error
+            Swal.fire({
+                title: 'Error al eliminar',
+                text: err.message,
+                icon: 'error',
+                confirmButtonColor: '#b91c1c'
+            });
         }
     };
 
@@ -168,7 +196,6 @@ const AdminPanel: React.FC = () => {
                                         <span className="text-xs font-black text-red-700">{ind.codigo_indicador}</span>
                                         <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-200 uppercase">{ind.tipo_indicador}</span>
                                         <span className="bg-slate-100 text-slate-800 text-[10px] font-black px-2 py-0.5 rounded border border-slate-200 uppercase">{ind.procesos?.nombre_proceso}</span>
-                                        {/* FIX: Badge de estado dinámico según el valor real */}
                                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${ind.estado === 'Activo' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-red-100 text-red-700 border-red-200'}`}>{ind.estado}</span>
                                     </div>
                                     <h4 className="text-sm font-bold text-slate-800">{ind.nombre_indicador}</h4>
@@ -207,7 +234,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                 codigo_indicador: item?.codigo_indicador || '',
                 nombre_indicador: item?.nombre_indicador || '',
                 proceso_id: item?.proceso_id || '',
-                // FIX: Se usaba 'Eficacia' como default pero la lista incluía 'Efectividad' (no existe en types.ts)
                 tipo_indicador: item?.tipo_indicador || 'Eficacia',
                 descripcion: item?.descripcion || '',
                 formula_calculo: item?.formula_calculo || '',
@@ -246,30 +272,16 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                     umbral_rojo: Number(formData.umbral_rojo),
                     proceso_id: formData.proceso_id === "" ? null : formData.proceso_id
                 };
-                console.log("Payload de indicadores:", payload);
 
                 if (isEdit) {
-                    console.log("Ejecutando update en indicadores...");
                     const { error } = await supabase.from('indicadores').update(payload).eq('id', item.id);
-                    if (error) {
-                        console.error("Error en update indicadores:", error);
-                        throw error;
-                    }
-                    console.log("Update indicadores exitoso");
+                    if (error) throw error;
                 } else {
-                    console.log("Ejecutando insert en indicadores...");
                     const { error } = await supabase.from('indicadores').insert([payload]);
-                    if (error) {
-                        console.error("Error en insert indicadores:", error);
-                        throw error;
-                    }
-                    console.log("Insert indicadores exitoso");
+                    if (error) throw error;
                 }
             } else {
                 if (isEdit) {
-                    // FIX SEGURIDAD: Ahora usa la Edge Function 'editar-usuario'
-                    // en lugar de crear un adminClient con SERVICE_ROLE_KEY
-                    console.log("Invocando editar-usuario con datos:", { userId: item.id, ...formData });
                     const { data, error: functionError } = await supabase.functions.invoke('editar-usuario', {
                         body: {
                             userId: item.id,
@@ -281,7 +293,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                     });
 
                     if (functionError) {
-                        console.error("❌ Error invocando editar-usuario:", functionError);
                         let detail = functionError.message;
                         if (functionError.name === 'FunctionsHttpError') {
                             try {
@@ -296,13 +307,8 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                         }
                         throw new Error(`Error de la función: ${detail}`);
                     }
-                    if (data?.error) {
-                        console.error("❌ Error lógico en editar-usuario:", data.error);
-                        throw new Error(`Error de servidor: ${data.error}`);
-                    }
-                    console.log("✅ editar-usuario exitoso:", data);
+                    if (data?.error) throw new Error(`Error de servidor: ${data.error}`);
                 } else {
-                    console.log("Invocando crear-usuario con datos:", formData);
                     const { data, error: functionError } = await supabase.functions.invoke('crear-usuario', {
                         body: {
                             email: formData.email,
@@ -315,10 +321,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                     });
 
                     if (functionError) {
-                        console.error("❌ Error invocando crear-usuario:", functionError);
-
-                        // FIX: Los errores de Edge Functions en supabase-js incluyen detalles
-                        // Intentamos extraer el mensaje de error lógico enviado por la función
                         let detail = functionError.message;
                         if (functionError.name === 'FunctionsHttpError') {
                             try {
@@ -333,25 +335,37 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                         }
                         throw new Error(`Error de la función: ${detail}`);
                     }
-                    if (data?.error) {
-                        console.error("❌ Error lógico en crear-usuario:", data.error);
-                        throw new Error(`Error de servidor: ${data.error}`);
-                    }
-                    console.log("✅ crear-usuario exitoso:", data);
+                    if (data?.error) throw new Error(`Error de servidor: ${data.error}`);
                 }
             }
-            console.log("Llamando a onSave...");
             onSave();
 
+            // ✨ Alertas de éxito estilizadas para Guardar/Actualizar
             if (!isEdit) {
-                alert(type === 'indicadores' ? "✅ Indicador creado exitosamente." : "✅ Usuario creado. Se ha enviado un correo de bienvenida.");
+                Swal.fire({
+                    title: '¡Creado!',
+                    text: type === 'indicadores' ? 'Indicador creado exitosamente.' : 'Usuario creado. Se ha enviado un correo de bienvenida.',
+                    icon: 'success',
+                    confirmButtonColor: '#10b981'
+                });
             } else {
-                alert("✅ Registro actualizado correctamente.");
+                Swal.fire({
+                    title: '¡Actualizado!',
+                    text: 'Registro actualizado correctamente.',
+                    icon: 'success',
+                    confirmButtonColor: '#10b981'
+                });
             }
 
         } catch (err: any) {
             console.error("Excepción capturada en handleSubmit:", err);
-            alert("Error: " + err.message);
+            // ✨ Alerta de error estilizada
+            Swal.fire({
+                title: 'Error',
+                text: err.message,
+                icon: 'error',
+                confirmButtonColor: '#b91c1c'
+            });
         } finally {
             setLoading(false);
             console.log("Operación finalizada.");
@@ -387,7 +401,6 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                {/* Se restauró 'Efectividad' como tipo de indicador por solicitud del usuario */}
                                 <Select label="Tipo" value={formData.tipo_indicador} onChange={(v: any) => setFormData({ ...formData, tipo_indicador: v })} options={['Eficacia', 'Eficiencia', 'Efectividad', 'Cumplimiento']} />
                                 <Select label="Estado" value={formData.estado} onChange={(v: any) => setFormData({ ...formData, estado: v })} options={['Activo', 'Inactivo']} />
                             </div>
