@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { ShieldCheck, Lock } from 'lucide-react';
+import { ShieldCheck, Lock, Eye, EyeOff } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,10 +29,8 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] px-6 relative overflow-hidden">
-      {/* Fondo decorativo */}
-      <div className="absolute top-[-20%] right-[-10%] w-[50%] h-[50%] bg-red-900/20 rounded-full blur-[100px]"></div>
-      <div className="absolute bottom-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-900/20 rounded-full blur-[100px]"></div>
+    /* FONDO DEGRADADO ROJO VIBRANTE (Inspirado en tu imagen) */
+    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_center,_#991b1b_0%,_#450a0a_100%)] px-6 relative overflow-hidden">
 
       <div className="max-w-md w-full animate-in fade-in zoom-in duration-700 relative z-10">
         <div className="bg-white rounded-[2.5rem] shadow-2xl p-10 relative overflow-hidden border-4 border-slate-900/5">
@@ -40,11 +39,16 @@ const Login: React.FC = () => {
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-red-700 via-red-600 to-slate-900"></div>
 
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-50 rounded-2xl mb-6 border border-slate-100 shadow-inner">
-              <ShieldCheck size={32} className="text-red-700" />
+            <div className="inline-flex items-center justify-center w-24 h-24 bg-white rounded-full mb-6 border-4 border-slate-50 shadow-xl overflow-hidden p-2">
+              {/* Logo personalizado del cliente */}
+              <img
+                src="/logof.png"
+                alt="Logo SUR COMPANY"
+                className="w-full h-full object-contain"
+              />
             </div>
-            {/* NOMBRE ACTUALIZADO */}
-            <h1 className="text-2xl font-black text-slate-900 tracking-tighter mb-2 uppercase">SUR COMPANY SAS</h1>
+            {/* NOMBRES ORIGINALES */}
+            <h1 className="text-2xl font-black text-slate-900 tracking-tighter mb-1 uppercase">SUR COMPANY SAS</h1>
             <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.4em]">Plataforma de Indicadores</p>
           </div>
 
@@ -66,14 +70,20 @@ const Login: React.FC = () => {
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Contraseña</label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-xl focus:border-slate-900 outline-none transition-all text-sm font-bold text-slate-800"
+                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-xl focus:border-slate-900 outline-none transition-all text-sm font-bold text-slate-800 pr-12"
                     placeholder="••••••••"
                   />
-                  <Lock size={16} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
               </div>
             </div>
@@ -87,9 +97,14 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-xl transition-all active:scale-95 uppercase text-xs tracking-widest mt-4"
+              className="w-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold py-4 rounded-full shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 mt-4"
             >
-              {loading ? "Validando..." : "Iniciar Sesión"}
+              {loading ? "Validando..." : (
+                <>
+                  <Lock size={18} />
+                  <span>Iniciar sesión</span>
+                </>
+              )}
             </button>
           </form>
 

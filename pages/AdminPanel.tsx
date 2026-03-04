@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Proceso, UserProfile, Indicador } from '../types';
-import { Settings, Users, Activity, Plus, Edit2, Trash2, Filter, X, Save, AlertCircle } from 'lucide-react';
+import { Settings, Users, Activity, Plus, Edit2, Trash2, Filter, X, Save, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import Swal from 'sweetalert2'; // ✨ Importamos SweetAlert2
 
 // FIX SEGURIDAD: Se eliminó el import de createClient y las referencias a supabaseUrl/serviceRoleKey.
@@ -62,7 +62,6 @@ const AdminPanel: React.FC = () => {
             cancelButtonColor: '#64748b',
             confirmButtonText: 'Sí, eliminar',
             cancelButtonText: 'Cancelar',
-            borderRadius: '1rem',
         });
 
         if (!result.isConfirmed) return;
@@ -441,7 +440,13 @@ const Modal = ({ type, item, procesos, onClose, onSave }: any) => {
                         <>
                             <div className="grid grid-cols-2 gap-6">
                                 <Field label="Email de Usuario" value={formData.email} onChange={(v: any) => setFormData({ ...formData, email: v })} required disabled={isEdit} />
-                                <Field label={isEdit ? "Nueva Contraseña (Opcional)" : "Contraseña Temporal"} type="password" value={formData.password} onChange={(v: any) => setFormData({ ...formData, password: v })} required={!isEdit} placeholder={isEdit ? "Dejar en blanco" : "Mín. 6 caracteres"} />
+                                <PasswordField
+                                    label={isEdit ? "Nueva Contraseña (Opcional)" : "Contraseña Temporal"}
+                                    value={formData.password}
+                                    onChange={(v: any) => setFormData({ ...formData, password: v })}
+                                    required={!isEdit}
+                                    placeholder={isEdit ? "Dejar en blanco" : "Mín. 6 caracteres"}
+                                />
                             </div>
                             <Field label="Nombre Completo" value={formData.full_name} onChange={(v: any) => setFormData({ ...formData, full_name: v })} required />
                             <div className="grid grid-cols-2 gap-6">
@@ -470,6 +475,32 @@ const Field = ({ label, value, onChange, type = "text", required = false, disabl
         <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} required={required} placeholder={placeholder} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-slate-200 transition-all disabled:opacity-50" />
     </div>
 );
+
+const PasswordField = ({ label, value, onChange, required = false, placeholder = "" }: any) => {
+    const [show, setShow] = useState(false);
+    return (
+        <div className="space-y-1.5 text-left">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label} {required && '*'}</label>
+            <div className="relative">
+                <input
+                    type={show ? "text" : "password"}
+                    value={value}
+                    onChange={e => onChange(e.target.value)}
+                    required={required}
+                    placeholder={placeholder}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-slate-200 transition-all pr-10"
+                />
+                <button
+                    type="button"
+                    onClick={() => setShow(!show)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                    {show ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+            </div>
+        </div>
+    );
+};
 
 const Select = ({ label, value, onChange, options }: any) => (
     <div className="space-y-1.5 text-left">
