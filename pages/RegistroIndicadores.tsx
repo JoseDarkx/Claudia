@@ -313,6 +313,14 @@ const RegistroIndicadores: React.FC = () => {
                             </div>
                         </div>
 
+                        {/* Descripción del indicador */}
+                        {selectedInd.descripcion && (
+                            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+                                <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider block mb-1">📋 Descripción</span>
+                                <p className="text-sm text-slate-700 font-medium leading-relaxed">{selectedInd.descripcion}</p>
+                            </div>
+                        )}
+
                         <div className="bg-white border-l-4 border-red-500 p-4 rounded-lg mb-6 shadow-sm">
                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Fórmula de Cálculo</span>
                             <p className="text-sm font-bold text-slate-700 italic">

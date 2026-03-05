@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate, Link, useLocation, Outle
 import { supabase } from './lib/supabase';
 import { UserProfile } from './types';
 import { LayoutGrid, ClipboardList, Building2, History, Settings, LogOut, FilePlus2 } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 // --- IMPORTACIONES LAZY (CARGA PEREZOSA) ---
 const Login = lazy(() => import('./pages/Login'));
@@ -38,6 +39,18 @@ const LoadingScreen = () => (
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // --- VERSIONADO AUTOMÁTICO (Limpia caché al actualizar la app) ---
+  // ⚠️ Incrementa este número cada vez que despliegues una actualización importante.
+  const APP_VERSION = "1.0.0";
+  useEffect(() => {
+    const storedVersion = localStorage.getItem("app_version");
+    if (storedVersion !== APP_VERSION) {
+      console.log(`🔄 Versión cambiada (${storedVersion} → ${APP_VERSION}). Limpiando caché automáticamente.`);
+      localStorage.clear();
+      localStorage.setItem("app_version", APP_VERSION);
+    }
+  }, []);
 
   // --- FUNCIÓN DE SALIDA LIMPIA ---
   const handleSignOut = async () => {
@@ -179,9 +192,13 @@ const ProtectedRoute: React.FC<{ user: UserProfile | null }> = ({ user }) => {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f3f4f6] font-sans">
+      {/* HEADER */}
       <header className="bg-[#1e293b] text-white h-16 flex items-center justify-between px-8 shadow-md z-50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#b91c1c] rounded-lg flex items-center justify-center font-black italic shadow-red-900/50 shadow-lg text-[10px]">SUR</div>
+          {/* #8: Logo personalizado en el header */}
+          <div className="w-9 h-9 rounded-full bg-white overflow-hidden flex items-center justify-center border-2 border-white/20 shadow-lg flex-shrink-0">
+            <img src="/logof.png" alt="Logo SUR COMPANY" className="w-full h-full object-contain p-0.5" />
+          </div>
           <div>
             <h1 className="text-sm font-black tracking-tight leading-none uppercase">INDICADORES DE PROCESO</h1>
             <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em] uppercase">SUR COMPANY SAS</p>
@@ -193,8 +210,21 @@ const ProtectedRoute: React.FC<{ user: UserProfile | null }> = ({ user }) => {
             <p className="text-[10px] text-slate-400 uppercase tracking-wider">{user.role}</p>
           </div>
 
+          {/* #9: Confirmación de cierre de sesión */}
           <button
-            onClick={() => signOut()}
+            onClick={async () => {
+              const result = await Swal.fire({
+                title: '¿Cerrar sesión?',
+                text: 'Se cerrará tu sesión actual.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#b91c1c',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: 'Sí, salir',
+                cancelButtonText: 'Cancelar',
+              });
+              if (result.isConfirmed) signOut();
+            }}
             className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold border border-slate-700 transition-all cursor-pointer active:scale-95"
           >
             <LogOut size={14} /> Salir
