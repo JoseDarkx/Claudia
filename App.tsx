@@ -82,7 +82,7 @@ const App: React.FC = () => {
       try {
         // Envolviendo getSession en una promesa con timeout corto (5s) para el arranque inicial
         const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout Supabase")), 5000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout Supabase")), 15000));
 
         const { data: { session }, error: sessionError } = await Promise.race([sessionPromise, timeoutPromise]) as any;
 
