@@ -50,7 +50,7 @@ serve(async (req) => {
     const body = await req.json();
     const { email, password, full_name, role, proceso_id, nombre_proceso } = body;
 
-    console.log(`CREAR-USUARIO: Procesando ${email} solicitado por ${user.email}`);
+    console.log(`CREAR-USUARIO: Iniciando proceso para ${email}`);
 
     if (!email || !full_name) throw new Error("Email y Nombre son obligatorios");
 
@@ -60,22 +60,31 @@ serve(async (req) => {
       data: { full_name, role, nombre_proceso }
     });
 
-    if (authError) throw new Error(`Error Auth (Invitation): ${authError.message}`);
-    console.log("Respuesta de invitación (authData):", JSON.stringify(authData.user.user_metadata));
+    if (authError) {
+      console.error(`Error Auth (Invitation): ${authError.message}`);
+      throw new Error(`Error al enviar invitación: ${authError.message}. Verifica los límites de correo o la configuración SMTP.`);
+    }
+    
+    const userId = authData.user.id;
+    console.log(`Usuario invitado exitosamente. ID: ${userId}`);
 
     // 2. Definir la contraseña y marcar como verificado (para que entre directo)
-    console.log("Asignando contraseña y confirmando email...");
-    const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(authData.user.id, {
+    console.log("Asignando contraseña inicial y confirmando email...");
+    const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       password: password || '123456',
-      email_confirm: true
+      email_confirm: true,
+      user_metadata: { full_name, role, nombre_proceso } // Sincronizamos metadata también aquí
     });
 
-    if (updateAuthError) console.warn("Aviso: No se pudo setear la contraseña inicial, el usuario deberá definirla:", updateAuthError.message);
+    if (updateAuthError) {
+      console.warn("Aviso: No se pudo auto-confirmar el usuario:", updateAuthError.message);
+    }
 
     // 3. Insertar/Actualizar perfil en la tabla 'profiles'
+    console.log("Actualizando tabla de perfiles...");
     const { error: profileInsertError } = await supabaseAdmin.from('profiles').upsert([
       {
-        id: authData.user.id,
+        id: userId,
         email,
         full_name,
         role,
@@ -83,9 +92,18 @@ serve(async (req) => {
       }
     ]);
 
-    if (profileInsertError) throw new Error(`Error DB (Profile): ${profileInsertError.message}`);
+    if (profileInsertError) {
+      console.error("Error al insertar perfil:", profileInsertError.message);
+      throw new Error(`Error DB (Profile): ${profileInsertError.message}`);
+    }
 
-    return new Response(JSON.stringify({ success: true, message: "Usuario creado correctamente" }), {
+    console.log("Usuario creado y perfil sincronizado correctamente.");
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: "Usuario creado correctamente",
+      userId: userId
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });

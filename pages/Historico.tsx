@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useTransition } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../App';
@@ -25,6 +25,9 @@ const Historico: React.FC = () => {
 
   // 🔥 SEGURIDAD: El dashboard solo arranca en true si el usuario es Administrador
   const [showDashboard, setShowDashboard] = useState(user?.role === 'Administrador');
+
+  // ✨ RENDIMIENTO: Transición concurrente de React 18 para no bloquear el hilo principal con los filtros
+  const [isPending, startTransition] = useTransition();
 
   const handleDelete = async (id: string) => {
     // ✨ Reemplazamos confirm() por Swal
@@ -77,9 +80,9 @@ const Historico: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       const [pRes, iRes, rRes] = await Promise.all([
-        supabase.from('procesos').select('*'),
-        supabase.from('indicadores').select('*'),
-        supabase.from('registro_mensual_indicadores').select('*, indicadores(*), procesos(*)').order('periodo', { ascending: false }).limit(200)
+        supabase.from('procesos').select('id, nombre_proceso, codigo_proceso'),
+        supabase.from('indicadores').select('id, nombre_indicador, codigo_indicador, frecuencia, proceso_id'),
+        supabase.from('registro_mensual_indicadores').select('id, periodo, porcentaje_cumplimiento, semaforo, indicador_id, proceso_id, usuario_sistema, resultado_mensual, unidad_medida, meta, cumple_meta, observaciones, accion_mejora, nombre_responsable_registro, estado_registro, indicadores(id, nombre_indicador, codigo_indicador, frecuencia, proceso_id), procesos(id, nombre_proceso, codigo_proceso)').order('periodo', { ascending: false }).limit(200)
       ]);
       setProcesos(pRes.data || []);
       setIndicadores(iRes.data || []);
@@ -244,10 +247,13 @@ const Historico: React.FC = () => {
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Proceso</label>
           <select value={filterProceso} onChange={e => {
-            setFilterProceso(e.target.value);
-            setFilterIndicador('Todos los indicadores');
-            setCurrentPage(1);
-          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none">
+            const val = e.target.value;
+            startTransition(() => {
+              setFilterProceso(val);
+              setFilterIndicador('Todos los indicadores');
+              setCurrentPage(1);
+            });
+          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none disabled:opacity-50" disabled={isPending}>
             {/* 🔥 Opción dinámica para no romper el filtro interno */}
             <option value="Todos los procesos">
               {user?.role === 'Administrador' ? 'Todos los procesos' : 'Todos mis procesos'}
@@ -257,14 +263,26 @@ const Historico: React.FC = () => {
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Indicador</label>
-          <select value={filterIndicador} onChange={e => setFilterIndicador(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none">
+          <select value={filterIndicador} onChange={e => {
+            const val = e.target.value;
+            startTransition(() => {
+              setFilterIndicador(val);
+              setCurrentPage(1);
+            });
+          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none disabled:opacity-50" disabled={isPending}>
             <option>Todos los indicadores</option>
             {indicadoresDisponibles.map(i => <option key={i.id}>{i.nombre_indicador}</option>)}
           </select>
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Frecuencia</label>
-          <select value={filterFrecuencia} onChange={e => setFilterFrecuencia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none">
+          <select value={filterFrecuencia} onChange={e => {
+            const val = e.target.value;
+            startTransition(() => {
+              setFilterFrecuencia(val);
+              setCurrentPage(1);
+            });
+          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none disabled:opacity-50" disabled={isPending}>
             <option value="Todas">Todas</option>
             <option value="Mensual">Mensuales</option>
             <option value="Trimestral">Trimestrales</option>
@@ -273,11 +291,23 @@ const Historico: React.FC = () => {
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Desde</label>
-          <input type="month" value={filterDesde} onChange={e => { setFilterDesde(e.target.value); setCurrentPage(1); }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none" />
+          <input type="month" value={filterDesde} onChange={e => { 
+            const val = e.target.value;
+            startTransition(() => {
+              setFilterDesde(val); 
+              setCurrentPage(1); 
+            });
+          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none disabled:opacity-50" disabled={isPending} />
         </div>
         <div className="space-y-1">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hasta</label>
-          <input type="month" value={filterHasta} onChange={e => { setFilterHasta(e.target.value); setCurrentPage(1); }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none" />
+          <input type="month" value={filterHasta} onChange={e => { 
+            const val = e.target.value;
+            startTransition(() => {
+              setFilterHasta(val); 
+              setCurrentPage(1); 
+            });
+          }} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none disabled:opacity-50" disabled={isPending} />
         </div>
       </div>
 

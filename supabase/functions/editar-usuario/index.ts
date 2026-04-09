@@ -54,6 +54,7 @@ serve(async (req) => {
     console.log(`EDITAR-USUARIO: Procesando ${userId} solicitado por ${user.email}`);
 
     // 1. Actualizar el perfil en la tabla profiles
+    console.log("Actualizando tabla de perfiles...");
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({
@@ -63,15 +64,30 @@ serve(async (req) => {
       })
       .eq('id', userId);
 
-    if (profileError) throw profileError;
-
-    // 2. Si viene una nueva contraseña, actualizarla en auth
-    if (password && password.trim() !== '') {
-      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-        password: password
-      });
-      if (authError) throw authError;
+    if (profileError) {
+      console.error("Error al actualizar perfil:", profileError.message);
+      throw profileError;
     }
+
+    // 2. Sincronizar con Auth (Password y Metadata)
+    console.log("Sincronizando con Auth...");
+    const updateData: any = {
+      user_metadata: { full_name, role }
+    };
+
+    if (password && password.trim() !== '') {
+      console.log("Incluyendo cambio de contraseña...");
+      updateData.password = password;
+    }
+
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, updateData);
+    
+    if (authError) {
+      console.error("Error al actualizar Auth:", authError.message);
+      throw authError;
+    }
+
+    console.log("Usuario y perfil actualizados exitosamente.");
 
     return new Response(JSON.stringify({ success: true, message: "Usuario actualizado correctamente" }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
